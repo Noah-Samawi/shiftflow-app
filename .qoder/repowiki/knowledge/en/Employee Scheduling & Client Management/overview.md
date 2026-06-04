@@ -1,0 +1,1 @@
+A React SPA for managing employee schedules, client records, and shift comments backed by Supabase.

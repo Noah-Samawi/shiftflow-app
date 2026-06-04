@@ -1,0 +1,4 @@
+- Every custom hook in `src/hooks/` returns a typed interface named `UseXxxReturn` describing state fields and action functions.
+- All async operations inside hooks are wrapped with `useCallback` to stabilize function identities across renders.
+- Each hook maintains local `loading` (boolean) and `error` (string | null) state, resetting both at the start of every operation.
+- Mutations that modify data trigger a refetch or optimistic local update to keep UI state consistent.

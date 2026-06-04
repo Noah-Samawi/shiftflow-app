@@ -1,0 +1,1 @@
+Requires a `.env` file defining `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`; the app throws at startup if either is absent. Standard scripts: `npm run dev` (Vite HMR), `npm run build` (`tsc -b && vite build`), `npm run lint` (ESLint).

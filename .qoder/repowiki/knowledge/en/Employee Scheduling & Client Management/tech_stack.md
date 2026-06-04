@@ -1,0 +1,1 @@
+Supabase JS client (`@supabase/supabase-js` ^2.107.0) for auth, realtime subscriptions, and Postgres CRUD; React 19 with Vite 8 and the Oxc-based `@vitejs/plugin-react`.

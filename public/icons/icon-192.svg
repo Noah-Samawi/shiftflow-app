@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192">
+  <rect width="192" height="192" rx="32" fill="#0F172A"/>
+  <g transform="translate(48, 36)">
+    <rect x="0" y="0" width="40" height="40" rx="8" fill="#3B82F6"/>
+    <rect x="56" y="0" width="40" height="40" rx="8" fill="#3B82F6" opacity="0.6"/>
+    <rect x="0" y="56" width="40" height="40" rx="8" fill="#3B82F6" opacity="0.6"/>
+    <rect x="56" y="56" width="40" height="40" rx="8" fill="#3B82F6"/>
+    <rect x="0" y="0" width="96" height="96" rx="12" fill="none" stroke="#3B82F6" stroke-width="2" opacity="0.3"/>
+  </g>
+  <text x="96" y="168" text-anchor="middle" font-family="-apple-system, sans-serif" font-size="20" font-weight="700" fill="#ffffff">ShiftManager</text>
+</svg>
