@@ -82,15 +82,18 @@ export default function ShiftDrawer({
   const { comments, loading: commentsLoading, getComments, addComment } = useComments();
   const commentsEndRef = useRef<HTMLDivElement>(null);
 
-  const [employeeId, setEmployeeId] = useState("");
+  const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>([]);
   const [customerId, setCustomerId] = useState("");
-  const [shiftDate, setShiftDate] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [startTime, setStartTime] = useState("08:00");
   const [endTime, setEndTime] = useState("16:00");
   const [tasks, setTasks] = useState("");
   const [recurrence, setRecurrence] = useState<ScheduleRecurrence>("once");
   const [occurrences, setOccurrences] = useState(1);
   const [status, setStatus] = useState<Schedule["status"]>("scheduled");
+  const [unavailableEmployeeIds, setUnavailableEmployeeIds] = useState<Set<string>>(new Set());
+  const [loadingAvailability, setLoadingAvailability] = useState(false);
 
   const [newComment, setNewComment] = useState("");
   const [submittingComment, setSubmittingComment] = useState(false);
@@ -133,9 +136,11 @@ export default function ShiftDrawer({
 
   useEffect(() => {
     if (mode === "create") {
-      setEmployeeId(defaultEmployeeId ?? "");
+      const initialDate = defaultDate ?? formatToday();
+      setSelectedEmployeeIds(defaultEmployeeId ? [defaultEmployeeId] : []);
       setCustomerId("");
-      setShiftDate(defaultDate ?? formatToday());
+      setDateFrom(initialDate);
+      setDateTo(initialDate);
       setStartTime("08:00");
       setEndTime("16:00");
       setTasks("");
@@ -143,16 +148,19 @@ export default function ShiftDrawer({
       setOccurrences(1);
       setStatus("scheduled");
       setFormError(null);
+      setUnavailableEmployeeIds(new Set());
     } else if (schedule) {
-      setEmployeeId(schedule.employee_id || "");
+      setSelectedEmployeeIds(schedule.employee_id ? [schedule.employee_id] : []);
       setCustomerId(schedule.customer_id);
-      setShiftDate(schedule.shift_date);
+      setDateFrom(schedule.shift_date);
+      setDateTo(schedule.shift_date);
       setStartTime(normalizeTimeInput(schedule.start_time));
       setEndTime(normalizeTimeInput(schedule.end_time));
       setTasks(schedule.tasks || schedule.instructions || "");
       setRecurrence(schedule.recurrence ?? "once");
       setStatus(schedule.status);
       setFormError(null);
+      setUnavailableEmployeeIds(new Set());
     }
   }, [mode, schedule, defaultDate, defaultEmployeeId]);
 
@@ -184,17 +192,82 @@ export default function ShiftDrawer({
     setTimeout(onClose, 220);
   };
 
+  const getDateRange = (from: string, to: string) => {
+    const start = new Date(from + "T00:00:00");
+    const end = new Date(to + "T00:00:00");
+    const result: string[] = [];
+    for (
+      let current = new Date(start);
+      current <= end;
+      current.setDate(current.getDate() + 1)
+    ) {
+      result.push(current.toISOString().slice(0, 10));
+    }
+    return result;
+  };
+
+  const loadAvailability = async () => {
+    if (!dateFrom || !dateTo || !startTime || !endTime) {
+      setUnavailableEmployeeIds(new Set());
+      return;
+    }
+
+    setLoadingAvailability(true);
+    const { data, error } = await supabase
+      .from("schedules")
+      .select("id, employee_id, shift_date, start_time, end_time")
+      .gte("shift_date", dateFrom)
+      .lte("shift_date", dateTo)
+      .order("shift_date");
+
+    if (error) {
+      setUnavailableEmployeeIds(new Set());
+      setLoadingAvailability(false);
+      return;
+    }
+
+    const unavailable = new Set<string>();
+    const selectedStart = startTime + ":00";
+    const selectedEnd = endTime + ":00";
+    const excludeId = schedule?.id;
+
+    (data ?? []).forEach((row) => {
+      const entry = row as { id: string; employee_id: string | null; shift_date: string; start_time: string; end_time: string };
+      if (!entry.employee_id || entry.id === excludeId) return;
+      const overlaps = selectedStart < entry.end_time && entry.start_time < selectedEnd;
+      if (overlaps) {
+        unavailable.add(entry.employee_id);
+      }
+    });
+
+    setUnavailableEmployeeIds(unavailable);
+    setLoadingAvailability(false);
+  };
+
+  useEffect(() => {
+    void loadAvailability();
+  }, [dateFrom, dateTo, startTime, endTime, schedule?.id]);
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!isFormMode) return;
 
-    if (!employeeId || !customerId || !shiftDate) {
+    if (!customerId || !dateFrom || !dateTo || selectedEmployeeIds.length === 0) {
       setFormError("Bitte alle Pflichtfelder ausfüllen.");
-      toast.error("Bitte Mitarbeiter, Kunde und Datum auswählen.");
+      toast.error("Bitte Kunde, Datum und Mitarbeiter auswählen.");
+      return;
+    }
+    if (dateFrom > dateTo) {
+      setFormError("Das Enddatum muss gleich oder später als das Startdatum sein.");
       return;
     }
     if (startTime >= endTime) {
       setFormError("Endzeit muss nach der Startzeit liegen.");
+      return;
+    }
+    const conflict = selectedEmployeeIds.some((id) => unavailableEmployeeIds.has(id));
+    if (conflict) {
+      setFormError("Mindestens ein ausgewählter Mitarbeiter ist nicht verfügbar.");
       return;
     }
 
@@ -207,42 +280,43 @@ export default function ShiftDrawer({
         : Math.min(52, Math.max(1, occurrences));
 
     try {
+      const dates = getDateRange(dateFrom, dateTo);
       if (mode === "create" && onSave) {
-        await onSave({
-          employee_id: employeeId || null,
-          customer_id: customerId,
-          shift_date: shiftDate,
-          start_time: startTime + ":00",
-          end_time: endTime + ":00",
-          tasks: tasks.trim() || null,
-          recurrence,
-          occurrences: occ,
-          status,
-        });
+        for (const employeeId of selectedEmployeeIds) {
+          for (const shiftDateValue of dates) {
+            await onSave({
+              employee_id: employeeId,
+              customer_id: customerId,
+              shift_date: shiftDateValue,
+              start_time: startTime + ":00",
+              end_time: endTime + ":00",
+              tasks: tasks.trim() || null,
+              recurrence,
+              occurrences: occ,
+              status,
+            });
+          }
+        }
 
-        // Nach erfolgreichem Speichern: Benachrichtigungen
         try {
-          // Lade die soeben erstellte Schicht, um die ID zu bekommen
-          const { data: latest } = await supabase
+          const latest = await supabase
             .from("schedules")
             .select("id, employee_id")
-            .eq("employee_id", employeeId)
-            .eq("shift_date", shiftDate)
+            .eq("customer_id", customerId)
+            .eq("shift_date", dateFrom)
             .order("created_at", { ascending: false })
             .limit(1)
             .single();
 
-          if (latest) {
-            // E-Mail Benachrichtigung
+          if (latest.data) {
             void supabase.functions.invoke("notify-employee", {
-              body: { scheduleId: latest.id },
+              body: { scheduleId: latest.data.id },
             }).catch(() => {/* Edge Function ggf. nicht deployed */});
 
-            // WhatsApp Benachrichtigung (nur wenn Mitarbeiter-Telefon vorhanden)
-            const emp = profiles.find((p) => p.id === employeeId);
+            const emp = profiles.find((p) => p.id === latest.data.employee_id);
             if (emp?.phone) {
               const cst = customers.find((c) => c.id === customerId);
-              const datum = new Date(shiftDate).toLocaleDateString("de-DE", {
+              const datum = new Date(dateFrom).toLocaleDateString("de-DE", {
                 weekday: "long", day: "2-digit", month: "long", year: "numeric"
               });
               const waMessage =
@@ -267,16 +341,35 @@ export default function ShiftDrawer({
         toast.success("Schicht gespeichert!");
         handleClose();
       } else if (mode === "edit" && onUpdate && schedule) {
-        // Bestehende Schicht: keine Serienänderung — nur Einzeltermin aktualisieren
+        const employeeId = selectedEmployeeIds[0] ?? null;
         await onUpdate(schedule.id, {
-          employee_id: employeeId || null,
+          employee_id: employeeId,
           customer_id: customerId,
-          shift_date: shiftDate,
+          shift_date: dateFrom,
           start_time: startTime + ":00",
           end_time: endTime + ":00",
           tasks: tasks.trim() || null,
           status,
         });
+
+        if (selectedEmployeeIds.length > 1 && onSave) {
+          for (const extraEmployeeId of selectedEmployeeIds.slice(1)) {
+            for (const shiftDateValue of dates) {
+              await onSave({
+                employee_id: extraEmployeeId,
+                customer_id: customerId,
+                shift_date: shiftDateValue,
+                start_time: startTime + ":00",
+                end_time: endTime + ":00",
+                tasks: tasks.trim() || null,
+                recurrence: "once",
+                occurrences: 1,
+                status,
+              });
+            }
+          }
+        }
+
         toast.success("Schicht aktualisiert!");
         handleClose();
       }
@@ -317,8 +410,9 @@ export default function ShiftDrawer({
     displaySchedule?.clients ??
     customers.find((c) => c.id === customerId);
 
-  const employee =
-    displaySchedule?.profiles ?? profiles.find((p) => p.id === employeeId);
+  const employee = displaySchedule?.employee_id
+    ? profiles.find((p) => p.id === displaySchedule.employee_id)
+    : null;
 
   const formatTime = (t: string) => {
     const [h, m] = t.split(":");
@@ -397,35 +491,131 @@ export default function ShiftDrawer({
               </div>
 
               <div className="form-group">
-                <label htmlFor="drawer-employee">Mitarbeiter *</label>
-                <select
-                  id="drawer-employee"
-                  value={employeeId}
-                  onChange={(e) => setEmployeeId(e.target.value)}
-                  required
-                  disabled={saving}
-                >
-                  <option value="">— Mitarbeiter wählen —</option>
-                  {profiles
-                    .filter((p) => p.role === "employee" || p.id === employeeId)
-                    .map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.full_name}
-                      </option>
-                    ))}
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="drawer-date">Datum *</label>
+                <label htmlFor="drawer-date-from">Datum von *</label>
                 <input
-                  id="drawer-date"
+                  id="drawer-date-from"
                   type="date"
-                  value={shiftDate}
-                  onChange={(e) => setShiftDate(e.target.value)}
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
                   required
                   disabled={saving}
                 />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="drawer-date-to">Datum bis *</label>
+                <input
+                  id="drawer-date-to"
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  required
+                  disabled={saving}
+                />
+              </div>
+
+              <div className="modal-row">
+                <div className="form-group">
+                  <label htmlFor="drawer-start">Von (Uhrzeit) *</label>
+                  <input
+                    id="drawer-start"
+                    type="time"
+                    value={startTime}
+                    onChange={(e) => setStartTime(e.target.value)}
+                    required
+                    disabled={saving}
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="drawer-end">Bis (Uhrzeit) *</label>
+                  <input
+                    id="drawer-end"
+                    type="time"
+                    value={endTime}
+                    onChange={(e) => setEndTime(e.target.value)}
+                    required
+                    disabled={saving}
+                  />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label>Mitarbeiter *</label>
+                <div className="employee-checkbox-grid">
+                  {profiles
+                    .filter((p) => p.role === "employee")
+                    .map((profile) => {
+                      const isDisabled = unavailableEmployeeIds.has(profile.id);
+                      const isChecked = selectedEmployeeIds.includes(profile.id);
+
+                      return (
+                        <label
+                          key={profile.id}
+                          className={`checkbox-card ${isDisabled ? "checkbox-card--disabled" : ""}`}
+                        >
+                          <input
+                            type="checkbox"
+                            disabled={saving || isDisabled}
+                            checked={isChecked}
+                            onChange={() => {
+                              setSelectedEmployeeIds((current) => {
+                                if (current.includes(profile.id)) {
+                                  return current.filter((id) => id !== profile.id);
+                                }
+                                return [...current, profile.id];
+                              });
+                            }}
+                          />
+                          <span>{profile.full_name}</span>
+                          {isDisabled && (
+                            <small className="text-xs text-gray-500">
+                              belegt
+                            </small>
+                          )}
+                        </label>
+                      );
+                    })}
+                </div>
+                {loadingAvailability && (
+                  <p className="text-sm text-gray-500 mt-2">
+                    Verfügbare Mitarbeiter werden geprüft…
+                  </p>
+                )}
+                {!loadingAvailability && unavailableEmployeeIds.size > 0 && (
+                  <p className="text-sm text-gray-500 mt-2">
+                    Ausgewählte Zeiten sind für einige Mitarbeiter nicht verfügbar.
+                  </p>
+                )}
+              </div>
+
+              <div className="form-group form-group--tasks">
+                <label htmlFor="drawer-tasks">
+                  Aufgaben / Hinweise
+                </label>
+                <textarea
+                  id="drawer-tasks"
+                  className="drawer-tasks-field"
+                  value={tasks}
+                  onChange={(e) => setTasks(e.target.value)}
+                  placeholder="Was muss erledigt werden..."
+                  rows={3}
+                  disabled={saving}
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="drawer-status">Status</label>
+                <select
+                  id="drawer-status"
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value as Schedule["status"])}
+                  disabled={saving}
+                >
+                  <option value="scheduled">Geplant</option>
+                  <option value="confirmed">Bestätigt</option>
+                  <option value="completed">Abgeschlossen</option>
+                  <option value="cancelled">Abgesagt</option>
+                </select>
               </div>
 
               {mode === "create" && (
@@ -477,61 +667,6 @@ export default function ShiftDrawer({
                   )}
                 </>
               )}
-
-              <div className="modal-row">
-                <div className="form-group">
-                  <label htmlFor="drawer-start">Von (Uhrzeit) *</label>
-                  <input
-                    id="drawer-start"
-                    type="time"
-                    value={startTime}
-                    onChange={(e) => setStartTime(e.target.value)}
-                    required
-                    disabled={saving}
-                  />
-                </div>
-                <div className="form-group">
-                  <label htmlFor="drawer-end">Bis (Uhrzeit) *</label>
-                  <input
-                    id="drawer-end"
-                    type="time"
-                    value={endTime}
-                    onChange={(e) => setEndTime(e.target.value)}
-                    required
-                    disabled={saving}
-                  />
-                </div>
-              </div>
-
-              <div className="form-group form-group--tasks">
-                <label htmlFor="drawer-tasks">
-                  Aufgaben / Hinweise
-                </label>
-                <textarea
-                  id="drawer-tasks"
-                  className="drawer-tasks-field"
-                  value={tasks}
-                  onChange={(e) => setTasks(e.target.value)}
-                  placeholder="Was muss erledigt werden..."
-                  rows={3}
-                  disabled={saving}
-                />
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="drawer-status">Status</label>
-                <select
-                  id="drawer-status"
-                  value={status}
-                  onChange={(e) => setStatus(e.target.value as Schedule["status"])}
-                  disabled={saving}
-                >
-                  <option value="scheduled">Geplant</option>
-                  <option value="confirmed">Bestätigt</option>
-                  <option value="completed">Abgeschlossen</option>
-                  <option value="cancelled">Abgesagt</option>
-                </select>
-              </div>
 
               <div className="drawer-form-actions">
                 {mode === "edit" && onDelete && (
