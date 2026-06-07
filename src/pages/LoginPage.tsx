@@ -1,6 +1,42 @@
 import { useState, useEffect, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
+
+const MAX_ATTEMPTS = 3;
+const LOCKOUT_MINUTES = 15;
+const RATE_LIMIT_KEY = "login_attempts";
+const LOCKOUT_KEY = "login_lockout_until";
+
+interface RateLimit {
+  attempts: number;
+  lastAttempt: number;
+}
+
+function getRateLimit(): RateLimit {
+  try {
+    const raw = localStorage.getItem(RATE_LIMIT_KEY);
+    if (raw) return JSON.parse(raw) as RateLimit;
+  } catch { /* ignore */ }
+  return { attempts: 0, lastAttempt: 0 };
+}
+
+function setRateLimit(data: RateLimit) {
+  localStorage.setItem(RATE_LIMIT_KEY, JSON.stringify(data));
+}
+
+function getLockoutUntil(): number {
+  const raw = localStorage.getItem(LOCKOUT_KEY);
+  return raw ? parseInt(raw, 10) : 0;
+}
+
+function setLockoutUntil(timestamp: number) {
+  localStorage.setItem(LOCKOUT_KEY, String(timestamp));
+}
+
+function clearRateLimit() {
+  localStorage.removeItem(RATE_LIMIT_KEY);
+  localStorage.removeItem(LOCKOUT_KEY);
+}
 
 export default function LoginPage() {
   const { signIn, signUp, user, loading: authLoading } = useAuth();
@@ -12,15 +48,33 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [lockoutRemaining, setLockoutRemaining] = useState(0);
 
-  // Redirect if already logged in (stable dependencies to prevent render loop)
+  // Check lockout timer
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const until = getLockoutUntil();
+      const now = Date.now();
+      if (until > now) {
+        setLockoutRemaining(Math.ceil((until - now) / 1000));
+      } else {
+        if (lockoutRemaining > 0) setLockoutRemaining(0);
+        if (until > 0 && now >= until) {
+          localStorage.removeItem(LOCKOUT_KEY);
+          setError(null);
+        }
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [lockoutRemaining]);
+
+  // Redirect if already logged in
   useEffect(() => {
     if (!authLoading && user) {
       navigate("/dashboard", { replace: true });
     }
   }, [user, authLoading]);
 
-  // Show loading indicator while auth state is being determined
   if (authLoading) {
     return (
       <div className="app-loading">
@@ -30,15 +84,28 @@ export default function LoginPage() {
     );
   }
 
+  const isLockedOut = lockoutRemaining > 0;
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
     setSuccess(null);
-    if (isSignUp && password !== confirmPassword) {
-      setError("Passwörter stimmen nicht überein");
-      setSubmitting(false);
+
+    // Check lockout
+    const until = getLockoutUntil();
+    if (until > Date.now()) {
+      const mins = Math.ceil((until - Date.now()) / 60000);
+      setError(
+        `Zu oft falsch eingegeben. Bitte wenden Sie sich an den Administrator oder warten Sie ${mins} Minute(n).`
+      );
       return;
     }
+
+    if (isSignUp && password !== confirmPassword) {
+      setError("Passwörter stimmen nicht überein");
+      return;
+    }
+
     setSubmitting(true);
     try {
       if (isSignUp) {
@@ -49,12 +116,34 @@ export default function LoginPage() {
         setIsSignUp(false);
         setPassword("");
         setConfirmPassword("");
+        clearRateLimit();
       } else {
         await signIn(email, password);
-        // Navigation will be handled by useEffect when user state updates
+        clearRateLimit();
+        // Navigation via useEffect
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Authentifizierung fehlgeschlagen");
+      const msg = err instanceof Error ? err.message : "Authentifizierung fehlgeschlagen";
+
+      // Rate limiting on failure
+      const limit = getRateLimit();
+      limit.attempts += 1;
+      limit.lastAttempt = Date.now();
+      setRateLimit(limit);
+
+      if (limit.attempts >= MAX_ATTEMPTS) {
+        const lockoutUntil = Date.now() + LOCKOUT_MINUTES * 60 * 1000;
+        setLockoutUntil(lockoutUntil);
+        setLockoutRemaining(LOCKOUT_MINUTES * 60);
+        setError(
+          "Zu oft falsch eingegeben. Bitte wenden Sie sich an den Administrator."
+        );
+      } else {
+        setError(msg);
+      }
+
+      // Artificial delay to prevent brute force
+      await new Promise((r) => setTimeout(r, Math.min(limit.attempts * 500, 2000)));
     } finally {
       setSubmitting(false);
     }
@@ -68,6 +157,8 @@ export default function LoginPage() {
   };
 
   const isLoading = authLoading || submitting;
+
+  const remainingAttempts = Math.max(0, MAX_ATTEMPTS - getRateLimit().attempts);
 
   return (
     <div className="login-page">
@@ -102,6 +193,18 @@ export default function LoginPage() {
           {error && <div className="login-error">{error}</div>}
           {success && <div className="login-success">{success}</div>}
 
+          {!isSignUp && !isLockedOut && remainingAttempts < MAX_ATTEMPTS && (
+            <p className="text-xs text-amber-600 mb-2">
+              Noch {remainingAttempts} Versuch{remainingAttempts !== 1 ? "e" : ""} verbleibend.
+            </p>
+          )}
+
+          {isLockedOut && (
+            <p className="text-xs text-red-600 mb-2">
+              Account gesperrt. Wartezeit: {Math.ceil(lockoutRemaining / 60)}:{String(lockoutRemaining % 60).padStart(2, "0")}
+            </p>
+          )}
+
           <div className="form-group">
             <label htmlFor="email">E-Mail-Adresse</label>
             <input
@@ -111,7 +214,7 @@ export default function LoginPage() {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="ihre@email.de"
               required
-              disabled={isLoading}
+              disabled={isLoading || isLockedOut}
               autoComplete="email"
             />
           </div>
@@ -126,7 +229,7 @@ export default function LoginPage() {
               placeholder="••••••••"
               required
               minLength={6}
-              disabled={isLoading}
+              disabled={isLoading || isLockedOut}
               autoComplete={isSignUp ? "new-password" : "current-password"}
             />
           </div>
@@ -148,7 +251,11 @@ export default function LoginPage() {
             </div>
           )}
 
-          <button type="submit" className="btn-primary" disabled={isLoading}>
+          <button
+            type="submit"
+            className="btn-primary"
+            disabled={isLoading || isLockedOut}
+          >
             {isLoading
               ? isSignUp
                 ? "Konto wird erstellt…"
@@ -157,6 +264,14 @@ export default function LoginPage() {
                 ? "Registrieren"
                 : "Anmelden"}
           </button>
+
+          {!isSignUp && (
+            <div className="text-center mt-2">
+              <Link to="/forgot-password" className="text-sm text-blue-600 hover:underline">
+                Passwort vergessen?
+              </Link>
+            </div>
+          )}
 
           <div className="login-switch">
             {isSignUp ? (

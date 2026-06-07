@@ -81,10 +81,12 @@ const SCHEDULE_SELECT = `
 function ShiftCard({
   schedule,
   onClick,
+  onDoubleClick,
   showWhatsApp,
 }: {
   schedule: Schedule;
   onClick: (s: Schedule) => void;
+  onDoubleClick?: (s: Schedule) => void;
   showWhatsApp: boolean;
 }) {
   const customer = schedule.customers ?? schedule.clients;
@@ -94,6 +96,7 @@ function ShiftCard({
       <button
         type="button"
         onClick={() => onClick(schedule)}
+        onDoubleClick={() => onDoubleClick?.(schedule)}
         className="
           shift-card-btn w-full text-left px-2 py-1.5 rounded-lg
           border-l-4 text-xs font-medium mb-1
@@ -134,6 +137,7 @@ function DayCell({
   isCurrentMonth,
   onAddShift,
   onShiftClick,
+  onShiftDoubleClick,
   isAdmin,
 }: {
   date: Date;
@@ -142,6 +146,7 @@ function DayCell({
   isCurrentMonth: boolean;
   onAddShift: (date: Date) => void;
   onShiftClick: (s: Schedule) => void;
+  onShiftDoubleClick?: (s: Schedule) => void;
   isAdmin: boolean;
 }) {
   const today = isToday(date);
@@ -209,6 +214,7 @@ function DayCell({
             key={s.id}
             schedule={s}
             onClick={onShiftClick}
+            onDoubleClick={onShiftDoubleClick}
             showWhatsApp={isAdmin}
           />
         ))}
@@ -483,6 +489,14 @@ export default function SchedulerCalendar() {
     setCreateDate(null);
   };
 
+  const handleShiftDoubleClick = (schedule: Schedule) => {
+    if (!isAdmin) return;
+    openViewDrawer(schedule);
+    window.setTimeout(() => {
+      setDrawerMode('edit');
+    }, 0);
+  };
+
   const handleSaveShift = async (input: {
     employee_id: string | null;
     customer_id: string;
@@ -674,6 +688,7 @@ export default function SchedulerCalendar() {
                     isCurrentMonth
                     onAddShift={openCreateDrawer}
                     onShiftClick={openViewDrawer}
+                    onShiftDoubleClick={handleShiftDoubleClick}
                     isAdmin={isAdmin}
                   />
                 );
@@ -711,6 +726,7 @@ export default function SchedulerCalendar() {
                     isCurrentMonth
                     onAddShift={openCreateDrawer}
                     onShiftClick={openViewDrawer}
+                    onShiftDoubleClick={handleShiftDoubleClick}
                     isAdmin={isAdmin}
                   />
                 );

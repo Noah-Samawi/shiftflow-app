@@ -47,17 +47,22 @@ ALTER TABLE public.schedules
 
 -- profiles
 CREATE TABLE IF NOT EXISTS public.profiles (
-  id           uuid        PRIMARY KEY
+  id                         uuid        PRIMARY KEY
                            REFERENCES auth.users(id)
                            ON DELETE CASCADE,
-  full_name    text        NOT NULL,
-  phone        text,
-  address      text,
-  avatar_url   text,
-  weekly_hours integer     DEFAULT 40,
-  role         text        NOT NULL DEFAULT 'employee',
-  created_at   timestamptz DEFAULT now()
+  full_name                  text        NOT NULL,
+  phone                      text,
+  address                    text,
+  avatar_url                 text,
+  weekly_hours               integer     DEFAULT 40,
+  role                       text        NOT NULL DEFAULT 'employee',
+  requires_password_change   boolean     DEFAULT false,
+  created_at                 timestamptz DEFAULT now()
 );
+
+-- Spalte nachrüsten
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS requires_password_change boolean DEFAULT false;
 
 -- customers
 CREATE TABLE IF NOT EXISTS public.customers (
@@ -215,7 +220,7 @@ CREATE INDEX IF NOT EXISTS schedules_customer_id_idx
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger AS $$
 BEGIN
-  INSERT INTO public.profiles (id, full_name, role)
+  INSERT INTO public.profiles (id, full_name, role, requires_password_change)
   VALUES (
     NEW.id,
     COALESCE(
@@ -225,6 +230,10 @@ BEGIN
     CASE
       WHEN NEW.email = 'noahalsamawi688@gmail.com' THEN 'admin'
       ELSE 'employee'
+    END,
+    CASE
+      WHEN NEW.email = 'noahalsamawi688@gmail.com' THEN false
+      ELSE true
     END
   )
   ON CONFLICT (id) DO NOTHING;
