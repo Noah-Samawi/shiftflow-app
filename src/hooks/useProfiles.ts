@@ -2,11 +2,21 @@ import { useState, useCallback } from "react";
 import { supabase } from "../lib/supabaseClient";
 import type { Profile } from "../types/database";
 
+interface CreateEmployeeInput {
+  email: string;
+  full_name: string;
+  phone?: string | null;
+  address?: string | null;
+  weekly_hours?: number;
+}
+
 interface UseProfilesReturn {
   profiles: Profile[];
   loading: boolean;
   error: string | null;
   getProfiles: () => Promise<void>;
+  /** Admin: Mitarbeiter per E-Mail in auth.users + public.profiles anlegen */
+  createEmployeeByEmail: (input: CreateEmployeeInput) => Promise<string>;
   insertProfile: (data: Omit<Profile, "id" | "created_at">) => Promise<void>;
   updateProfile: (
     id: string,
@@ -35,6 +45,32 @@ export function useProfiles(): UseProfilesReturn {
     }
     setLoading(false);
   }, []);
+
+  const createEmployeeByEmail = useCallback(
+    async (input: CreateEmployeeInput) => {
+      setLoading(true);
+      setError(null);
+
+      const { data, error: err } = await supabase.rpc("admin_create_employee", {
+        p_email: input.email.trim().toLowerCase(),
+        p_full_name: input.full_name.trim(),
+        p_phone: input.phone ?? null,
+        p_address: input.address ?? null,
+        p_weekly_hours: input.weekly_hours ?? 40,
+      });
+
+      if (err) {
+        setError(err.message);
+        setLoading(false);
+        throw new Error(err.message);
+      }
+
+      await getProfiles();
+      setLoading(false);
+      return data as string;
+    },
+    [getProfiles]
+  );
 
   const insertProfile = useCallback(
     async (data: Omit<Profile, "id" | "created_at">) => {
@@ -92,5 +128,14 @@ export function useProfiles(): UseProfilesReturn {
     []
   );
 
-  return { profiles, loading, error, getProfiles, insertProfile, updateProfile, deleteProfile };
+  return {
+    profiles,
+    loading,
+    error,
+    getProfiles,
+    createEmployeeByEmail,
+    insertProfile,
+    updateProfile,
+    deleteProfile,
+  };
 }

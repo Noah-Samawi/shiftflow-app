@@ -36,11 +36,13 @@ const navItems: NavItem[] = [
   },
   {
     label: "Kunden",
-    path: "/clients",
+    path: "/customers",
     icon: (
       <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="10" cy="7" r="4" />
-        <path d="M3 18c0-3.3 3.1-6 7-6s7 2.7 7 6" />
+        <path d="M3 21l1-4h14l1 4" />
+        <path d="M6 17V9a4 4 0 018 0v8" />
+        <line x1="10" y1="1" x2="10" y2="5" />
+        <line x1="6" y1="5" x2="14" y2="5" />
       </svg>
     ),
   },
@@ -61,16 +63,24 @@ const navItems: NavItem[] = [
 const PAGE_TITLES: Record<string, string> = {
   "/dashboard": "Übersicht",
   "/schedule": "Dienstplan",
-  "/clients": "Kunden",
+  "/customers": "Kunden",
   "/employees": "Mitarbeiter",
 };
 
 export default function AppLayout() {
-  const { user, role, signOut } = useAuth();
+  const { user, isAdmin, roleLoading, signOut } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [weekOffset, setWeekOffset] = useState(0);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  // isAdmin = profiles.role === 'admin' (via RPC/DB + E-Mail-Fallback in AuthContext)
+  const roleLabel =
+    roleLoading && user
+      ? "Wird geladen…"
+      : isAdmin
+        ? "Administrator"
+        : "Mitarbeiter";
 
   const pageTitle = PAGE_TITLES[location.pathname] || "Dashboard";
   const isSchedulePage = location.pathname === "/schedule";
@@ -162,9 +172,7 @@ export default function AppLayout() {
             {!sidebarCollapsed && (
               <div className="user-info">
                 <span className="user-name">{user?.email}</span>
-                <span className="user-role">
-                  {role === "admin" ? "Administrator" : "Mitarbeiter"}
-                </span>
+                <span className="user-role">{roleLabel}</span>
               </div>
             )}
             <button
@@ -244,6 +252,22 @@ export default function AppLayout() {
           <Outlet context={{ weekOffset, monday }} />
         </main>
       </div>
+
+      {/* Mobile Bottom Navigation */}
+      <nav className="mobile-nav">
+        {navItems.map((item) => (
+          <NavLink
+            key={item.path}
+            to={item.path}
+            className={({ isActive }) =>
+              `mobile-nav__item ${isActive ? "mobile-nav__item--active" : ""}`
+            }
+          >
+            {item.icon}
+            <span>{item.label}</span>
+          </NavLink>
+        ))}
+      </nav>
     </div>
   );
 }

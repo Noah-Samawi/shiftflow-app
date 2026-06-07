@@ -55,6 +55,7 @@ export default function LoginPage() {
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Authentifizierung fehlgeschlagen");
+    } finally {
       setSubmitting(false);
     }
   };

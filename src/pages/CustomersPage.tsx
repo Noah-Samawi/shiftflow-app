@@ -1,66 +1,57 @@
 import { useState, useEffect, type FormEvent } from "react";
-import { useProfiles } from "../hooks/useProfiles";
+import { useCustomers } from "../hooks/useCustomers";
 import { useAuth } from "../hooks/useAuth";
 import WhatsAppButton from "../components/WhatsAppButton";
-import type { Profile } from "../types/database";
+import type { Customer } from "../types/database";
 
-interface EmployeeFormData {
-  full_name: string;
+interface CustomerFormData {
+  name: string;
   phone: string;
   address: string;
-  weekly_hours: number;
-  role: Profile["role"];
-  email: string;
+  notes: string;
 }
 
-const emptyForm: EmployeeFormData = {
-  full_name: "",
+const emptyForm: CustomerFormData = {
+  name: "",
   phone: "",
   address: "",
-  weekly_hours: 40,
-  role: "employee",
-  email: "",
+  notes: "",
 };
 
-export default function EmployeesPage() {
+/**
+ * Kundenverwaltung – nur für Administratoren.
+ * Kunden registrieren sich nicht selbst; alle CRUD-Operationen laufen über den Admin.
+ */
+export default function CustomersPage() {
   const { isAdmin } = useAuth();
-  const {
-    profiles,
-    loading,
-    error,
-    getProfiles,
-    createEmployeeByEmail,
-    updateProfile,
-    deleteProfile,
-  } = useProfiles();
+  const { customers, loading, error, getCustomers, upsertCustomer, deleteCustomer } =
+    useCustomers();
 
   const [modalOpen, setModalOpen] = useState(false);
-  const [editingProfile, setEditingProfile] = useState<Profile | null>(null);
-  const [form, setForm] = useState<EmployeeFormData>(emptyForm);
+  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [form, setForm] = useState<CustomerFormData>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
   useEffect(() => {
-    void getProfiles();
-  }, [getProfiles]);
+    void getCustomers();
+  }, [getCustomers]);
 
   const openAdd = () => {
-    setEditingProfile(null);
+    setEditingCustomer(null);
     setForm(emptyForm);
     setFormError(null);
     setModalOpen(true);
   };
 
-  const openEdit = (profile: Profile) => {
-    setEditingProfile(profile);
+  const openEdit = (customer: Customer) => {
+    setEditingCustomer(customer);
     setForm({
-      full_name: profile.full_name,
-      phone: profile.phone || "",
-      address: profile.address || "",
-      weekly_hours: profile.weekly_hours,
-      role: profile.role,
-      email: "",
+      name: customer.name,
+      phone: customer.phone || "",
+      address: customer.address || "",
+      notes: customer.notes || "",
     });
     setFormError(null);
     setModalOpen(true);
@@ -68,41 +59,24 @@ export default function EmployeesPage() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!form.full_name.trim()) {
+    if (!isAdmin) {
+      setFormError("Nur Administratoren dürfen Kunden verwalten.");
+      return;
+    }
+    if (!form.name.trim()) {
       setFormError("Name ist erforderlich");
       return;
     }
     setSaving(true);
     setFormError(null);
     try {
-      if (editingProfile) {
-        await updateProfile(editingProfile.id, {
-          full_name: form.full_name.trim(),
-          phone: form.phone || null,
-          address: form.address || null,
-          weekly_hours: form.weekly_hours,
-          role: form.role,
-        });
-      } else {
-        if (!isAdmin) {
-          setFormError("Nur Administratoren dürfen Mitarbeiter anlegen.");
-          setSaving(false);
-          return;
-        }
-        if (!form.email.trim()) {
-          setFormError("E-Mail ist erforderlich");
-          setSaving(false);
-          return;
-        }
-        // RPC legt auth.users + public.profiles (Rolle employee) atomar an
-        await createEmployeeByEmail({
-          email: form.email,
-          full_name: form.full_name.trim(),
-          phone: form.phone || null,
-          address: form.address || null,
-          weekly_hours: form.weekly_hours,
-        });
-      }
+      await upsertCustomer({
+        ...(editingCustomer ? { id: editingCustomer.id } : {}),
+        name: form.name.trim(),
+        phone: form.phone || null,
+        address: form.address || null,
+        notes: form.notes || null,
+      });
       setModalOpen(false);
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Fehler beim Speichern");
@@ -112,7 +86,8 @@ export default function EmployeesPage() {
   };
 
   const handleDelete = async (id: string) => {
-    await deleteProfile(id);
+    if (!isAdmin) return;
+    await deleteCustomer(id);
     setDeleteConfirm(null);
   };
 
@@ -125,12 +100,12 @@ export default function EmployeesPage() {
               <line x1="8" y1="2" x2="8" y2="14" />
               <line x1="2" y1="8" x2="14" y2="8" />
             </svg>
-            Neuer Mitarbeiter
+            Neuer Kunde
           </button>
         )}
       </div>
 
-      {loading && profiles.length === 0 && <div className="status-msg">Laden…</div>}
+      {loading && customers.length === 0 && <div className="status-msg">Laden…</div>}
       {error && <div className="status-msg error">{error}</div>}
 
       <div className="data-table-wrap">
@@ -140,64 +115,54 @@ export default function EmployeesPage() {
               <th>Name</th>
               <th>Telefon</th>
               <th>Adresse</th>
-              <th>Wochenstunden</th>
-              <th>Rolle</th>
+              <th>Notizen</th>
               <th className="col-actions">Aktionen</th>
             </tr>
           </thead>
           <tbody>
-            {profiles.length === 0 && !loading && (
+            {customers.length === 0 && !loading && (
               <tr>
-                <td colSpan={6} className="table-empty">
-                  Noch keine Mitarbeiter.{" "}
+                <td colSpan={5} className="table-empty">
+                  Noch keine Kunden.{" "}
                   {isAdmin && (
                     <button className="link-btn" onClick={openAdd}>
-                      Ersten Mitarbeiter anlegen →
+                      Ersten Kunden anlegen →
                     </button>
                   )}
                 </td>
               </tr>
             )}
-            {profiles.map((p) => (
-              <tr key={p.id}>
+            {customers.map((c) => (
+              <tr key={c.id}>
                 <td>
-                  <div className="employee-name-cell">
-                    <div className="user-avatar-sm">
-                      {p.full_name.charAt(0).toUpperCase()}
-                    </div>
-                    <span className="font-medium">{p.full_name}</span>
-                  </div>
+                  <span className="color-dot" style={{ background: c.color }} />
+                  <span className="font-medium">{c.name}</span>
                 </td>
                 <td>
                   <span className="phone-cell">
-                    {p.phone || "—"}
-                    <WhatsAppButton phone={p.phone} />
+                    {c.phone || "—"}
+                    <WhatsAppButton phone={c.phone} />
                   </span>
                 </td>
-                <td>{p.address || "—"}</td>
-                <td>{p.weekly_hours}h</td>
-                <td>
-                  <span className={`role-badge ${p.role === "admin" ? "role-badge--admin" : ""}`}>
-                    {p.role === "admin" ? "Admin" : "Mitarbeiter"}
-                  </span>
-                </td>
+                <td>{c.address || "—"}</td>
+                <td className="notes-cell">{c.notes || "—"}</td>
                 <td className="col-actions">
                   {isAdmin && (
                     <div className="row-actions">
                       <button
                         className="row-action-btn"
-                        onClick={() => openEdit(p)}
+                        onClick={() => openEdit(c)}
                         title="Bearbeiten"
                       >
                         <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M11.5 1.5l3 3L5 14H2v-3L11.5 1.5z" />
                         </svg>
                       </button>
-                      {deleteConfirm === p.id ? (
+                      {deleteConfirm === c.id ? (
                         <div className="delete-confirm-inline">
                           <button
                             className="row-action-btn row-action-btn--danger"
-                            onClick={() => handleDelete(p.id)}
+                            onClick={() => handleDelete(c.id)}
                             title="Löschen bestätigen"
                           >
                             <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -218,7 +183,7 @@ export default function EmployeesPage() {
                       ) : (
                         <button
                           className="row-action-btn row-action-btn--danger"
-                          onClick={() => setDeleteConfirm(p.id)}
+                          onClick={() => setDeleteConfirm(c.id)}
                           title="Löschen"
                         >
                           <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -241,7 +206,7 @@ export default function EmployeesPage() {
         <div className="modal-overlay" onClick={() => setModalOpen(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>{editingProfile ? "Mitarbeiter bearbeiten" : "Neuer Mitarbeiter"}</h2>
+              <h2>{editingCustomer ? "Kunde bearbeiten" : "Neuer Kunde"}</h2>
               <button className="modal-close" onClick={() => setModalOpen(false)}>
                 <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                   <line x1="4" y1="4" x2="14" y2="14" />
@@ -253,58 +218,27 @@ export default function EmployeesPage() {
             <form onSubmit={handleSubmit} className="modal-form">
               {formError && <div className="modal-error">{formError}</div>}
 
-              {!editingProfile && (
-                <div className="form-group">
-                  <label htmlFor="email">E-Mail-Adresse *</label>
-                  <input
-                    id="email"
-                    type="email"
-                    value={form.email}
-                    onChange={(e) => setForm({ ...form, email: e.target.value })}
-                    required
-                    disabled={saving}
-                    placeholder="mitarbeiter@beispiel.de"
-                  />
-                </div>
-              )}
-
               <div className="form-group">
-                <label htmlFor="fullname">Vollständiger Name *</label>
+                <label htmlFor="name">Name *</label>
                 <input
-                  id="fullname"
+                  id="name"
                   type="text"
-                  value={form.full_name}
-                  onChange={(e) => setForm({ ...form, full_name: e.target.value })}
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
                   required
                   disabled={saving}
                 />
               </div>
 
-              <div className="modal-row">
-                <div className="form-group">
-                  <label htmlFor="phone">Telefon</label>
-                  <input
-                    id="phone"
-                    type="tel"
-                    value={form.phone}
-                    onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                    disabled={saving}
-                  />
-                </div>
-                <div className="form-group">
-                  <label htmlFor="hours">Wochenstunden</label>
-                  <input
-                    id="hours"
-                    type="number"
-                    min="0"
-                    max="80"
-                    value={form.weekly_hours}
-                    onChange={(e) =>
-                      setForm({ ...form, weekly_hours: parseInt(e.target.value, 10) || 0 })
-                    }
-                    disabled={saving}
-                  />
-                </div>
+              <div className="form-group">
+                <label htmlFor="phone">Telefonnummer</label>
+                <input
+                  id="phone"
+                  type="tel"
+                  value={form.phone}
+                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                  disabled={saving}
+                />
               </div>
 
               <div className="form-group">
@@ -319,38 +253,22 @@ export default function EmployeesPage() {
               </div>
 
               <div className="form-group">
-                <label>Rolle</label>
-                <div className="role-toggle">
-                  <button
-                    type="button"
-                    className={`role-toggle-btn ${form.role === "employee" ? "role-toggle-btn--active" : ""}`}
-                    onClick={() => setForm({ ...form, role: "employee" })}
-                  >
-                    Mitarbeiter
-                  </button>
-                  <button
-                    type="button"
-                    className={`role-toggle-btn ${form.role === "admin" ? "role-toggle-btn--active" : ""}`}
-                    onClick={() => setForm({ ...form, role: "admin" })}
-                  >
-                    Admin
-                  </button>
-                </div>
+                <label htmlFor="notes">Notizen</label>
+                <textarea
+                  id="notes"
+                  value={form.notes}
+                  onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                  rows={3}
+                  disabled={saving}
+                />
               </div>
-
-              {!editingProfile && (
-                <div className="form-hint">
-                  Der Mitarbeiter erhält ein Konto mit dieser E-Mail. Zum ersten Login kann er
-                  „Passwort vergessen“ auf der Anmeldeseite nutzen.
-                </div>
-              )}
 
               <div className="modal-actions">
                 <button type="button" className="btn-secondary" onClick={() => setModalOpen(false)}>
                   Abbrechen
                 </button>
                 <button type="submit" className="btn-primary" disabled={saving}>
-                  {saving ? "Speichern…" : editingProfile ? "Änderungen speichern" : "Anlegen"}
+                  {saving ? "Speichern…" : editingCustomer ? "Änderungen speichern" : "Anlegen"}
                 </button>
               </div>
             </form>

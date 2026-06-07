@@ -1,5 +1,5 @@
-import React, {
-  useState, useEffect, useMemo, useCallback
+import {
+  useState, useEffect, useMemo, useCallback, useRef
 } from 'react';
 import {
   format, startOfWeek, endOfWeek, startOfMonth,
@@ -8,43 +8,24 @@ import {
   isSameMonth, getISOWeek, addDays, subDays
 } from 'date-fns';
 import { de } from 'date-fns/locale';
+import toast from "react-hot-toast";
 import { supabase } from '../../lib/supabaseClient';
+import { useAuth } from '../../hooks/useAuth';
+import { useProfiles } from '../../hooks/useProfiles';
+import { formatTimeRange24 } from '../../utils/formatTime';
 import {
   getGermanHolidays,
   getHolidayForDate,
   type GermanHoliday
 } from '../../utils/germanHolidays';
+import ShiftDrawer, { type ShiftDrawerMode } from '../ShiftDrawer';
+import EmployeeSidebar from './EmployeeSidebar';
+import ShiftWhatsAppReportButton from './ShiftWhatsAppReportButton';
+import { isWeekend } from '../../utils/calendarHelpers';
+import type { Schedule, ScheduleRecurrence } from '../../types/database';
 
-// ── Typen ──────────────────────────────────────────
-type ViewMode = 'tag' | 'woche' | 'monat' | 'jahr';
+type ViewMode = 'tag' | 'woche' | 'zwei_wochen' | 'monat' | 'jahr';
 
-interface Profile {
-  id: string;
-  full_name: string;
-  avatar_url?: string;
-  role: 'admin' | 'employee';
-}
-
-interface Client {
-  id: string;
-  name: string;
-  color: string;
-}
-
-interface Schedule {
-  id: string;
-  shift_date: string;
-  start_time: string;
-  end_time: string;
-  instructions?: string;
-  status: string;
-  employee_id?: string;
-  client_id?: string;
-  profiles?: Profile | null;
-  clients?: Client | null;
-}
-
-// ── Konstanten ─────────────────────────────────────
 const WEEKDAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 
 const MONTHS_DE = [
@@ -59,86 +40,93 @@ const STATUS_COLORS: Record<string, string> = {
   cancelled:  'bg-red-100   text-red-600   border-red-200  line-through',
 };
 
-const STATUS_DE: Record<string, string> = {
-  scheduled:  'Geplant',
-  confirmed:  'Bestätigt',
-  completed:  'Abgeschlossen',
-  cancelled:  'Abgesagt',
+const recurrenceLabel: Record<string, string> = {
+  once: 'Einmalig',
+  daily_workdays: 'Mo–Fr',
+  daily_all: 'Mo–So',
+  weekly: 'Wöchentlich',
+  biweekly: '2-wöchig',
 };
 
-// ── Hilfs-Hooks ────────────────────────────────────
-function useCurrentProfile() {
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [loading, setLoading] = useState(true);
+/** Supabase-Join: verschachtelte profiles/customers normalisieren */
+function normalizeScheduleRow(row: Record<string, unknown>): Schedule {
+  const profiles = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
+  const customers = Array.isArray(row.customers)
+    ? row.customers[0]
+    : row.customers ?? (Array.isArray(row.clients) ? row.clients[0] : row.clients);
+  const tasks =
+    (row.tasks as string | null) ??
+    (row.instructions as string | null) ??
+    null;
 
-  useEffect(() => {
-    let mounted = true;
-    async function load() {
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) { setLoading(false); return; }
-
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('id, full_name, avatar_url, role')
-          .eq('id', user.id)
-          .maybeSingle();
-
-        if (error) console.error('Profil-Fehler:', error.message);
-        if (mounted) setProfile(data ?? null);
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    }
-    load();
-
-    const { data: listener } =
-      supabase.auth.onAuthStateChange(() => load());
-    return () => {
-      mounted = false;
-      listener.subscription.unsubscribe();
-    };
-  }, []);
-
-  return { profile, loading, isAdmin: profile?.role === 'admin' };
+  return {
+    ...(row as unknown as Schedule),
+    tasks,
+    recurrence: (row.recurrence as ScheduleRecurrence) ?? 'once',
+    series_id: (row.series_id as string | null) ?? null,
+    profiles: profiles as Schedule['profiles'],
+    customers: customers as Schedule['customers'],
+    clients: customers as Schedule['clients'],
+  };
 }
 
-// ── Schicht-Karte ──────────────────────────────────
+const SCHEDULE_SELECT = `
+  id, shift_date, start_time, end_time,
+  tasks, instructions, status, employee_id, customer_id,
+  recurrence, series_id,
+  profiles ( id, full_name, phone, avatar_url, role ),
+  customers ( id, name, color, address, phone )
+`;
+
 function ShiftCard({
   schedule,
   onClick,
+  showWhatsApp,
 }: {
   schedule: Schedule;
   onClick: (s: Schedule) => void;
+  showWhatsApp: boolean;
 }) {
-  const colorClass = STATUS_COLORS[schedule.status] ?? STATUS_COLORS.scheduled;
+  const customer = schedule.customers ?? schedule.clients;
+
   return (
-    <button
-      onClick={() => onClick(schedule)}
-      className={`
-        w-full text-left px-2 py-1 rounded-md border text-xs
-        font-medium truncate transition-all hover:opacity-80
-        hover:shadow-sm mb-1 ${colorClass}
-      `}
-    >
-      <span className="font-semibold">
-        {schedule.start_time.slice(0,5)}–{schedule.end_time.slice(0,5)}
-      </span>
-      {' '}
-      <span className="opacity-80">
-        {schedule.profiles?.full_name?.split(' ')[0]}
-      </span>
-      {schedule.clients?.name && (
-        <span
-          className="ml-1 inline-block w-2 h-2 rounded-full flex-shrink-0"
-          style={{ backgroundColor: schedule.clients.color ?? '#3B82F6' }}
-        />
+    <div className="shift-card-row">
+      <button
+        type="button"
+        onClick={() => onClick(schedule)}
+        className="
+          shift-card-btn w-full text-left px-2 py-1.5 rounded-lg
+          border-l-4 text-xs font-medium mb-1
+          bg-white shadow-sm hover:shadow-md
+          transition-all cursor-pointer
+        "
+        style={{ borderLeftColor: customer?.color ?? '#3B82F6' }}
+      >
+        <p className="font-bold text-gray-800 text-xs">
+          {schedule.start_time.slice(0, 5)} – {schedule.end_time.slice(0, 5)}
+        </p>
+        <p className="text-gray-600 truncate">
+          {schedule.profiles?.full_name?.split(' ')[0] ?? '—'}
+        </p>
+        <p className="text-gray-400 truncate text-xs">
+          {customer?.name}
+        </p>
+        {schedule.recurrence !== 'once' && (
+          <span className="
+            inline-block mt-0.5 px-1 py-0.5 rounded text-xs
+            bg-blue-50 text-blue-600
+          ">
+            {recurrenceLabel[schedule.recurrence]}
+          </span>
+        )}
+      </button>
+      {showWhatsApp && (
+        <ShiftWhatsAppReportButton schedule={schedule} variant="icon" />
       )}
-    </button>
+    </div>
   );
 }
 
-// ── Tag-Zelle ──────────────────────────────────────
 function DayCell({
   date,
   schedules,
@@ -156,19 +144,20 @@ function DayCell({
   onShiftClick: (s: Schedule) => void;
   isAdmin: boolean;
 }) {
-  const today     = isToday(date);
-  const dateStr   = format(date, 'd');
-  const dimmed    = !isCurrentMonth;
+  const today = isToday(date);
+  const dateStr = format(date, 'd');
+  const dimmed = !isCurrentMonth;
+  const weekend = isWeekend(date);
 
   return (
     <div
-      className="
-        min-h-[120px] p-2 border-b border-r border-gray-100
+      className={`
+        calendar-day min-h-[140px] min-w-0 p-2 border-b border-r border-gray-100
         flex flex-col gap-1 group transition-colors relative
         ${dimmed ? 'bg-gray-50/50' : 'bg-white hover:bg-gray-50/70'}
-      "
+        ${weekend ? 'calendar-day--weekend' : ''}
+      `}
     >
-      {/* Datum + Feiertag */}
       <div className="flex items-start justify-between mb-1">
         <span
           className={`
@@ -184,16 +173,16 @@ function DayCell({
         >
           {dateStr}
         </span>
-  
-        {/* + Button (nur Admin, Hover) */}
+
         {isAdmin && !dimmed && (
           <button
+            type="button"
             onClick={() => onAddShift(date)}
             className="
               opacity-0 group-hover:opacity-100 transition-opacity
               w-5 h-5 rounded-full bg-blue-500 text-white
               flex items-center justify-center text-xs
-              hover:bg-blue-600 flex-shrink-0
+              hover:bg-blue-600 shrink-0
             "
             title="Schicht hinzufügen"
           >
@@ -201,8 +190,7 @@ function DayCell({
           </button>
         )}
       </div>
-  
-      {/* Feiertag-Badge - absolut positioniert um Grid nicht zu brechen */}
+
       {holiday && (
         <div className="absolute top-1 right-1 z-10">
           <span className="
@@ -210,22 +198,18 @@ function DayCell({
             bg-purple-600 text-white text-[10px] font-medium
             rounded-full truncate max-w-[90px]
           ">
-            <svg width="8" height="8" viewBox="0 0 10 10" fill="currentColor" className="flex-shrink-0">
-              <path d="M5 0L6.5 3.5L10 4L7.5 6.5L8 10L5 8.5L2 10L2.5 6.5L0 4L3.5 3.5L5 0Z" />
-            </svg>
-            <span className="truncate">{holiday.shortName}</span>
+            {holiday.shortName}
           </span>
         </div>
       )}
-  
-      {/* Schichten */}
-      <div className="flex-1 overflow-y-auto max-h-[160px]
-                      scrollbar-thin scrollbar-thumb-gray-200">
+
+      <div className="flex-1 overflow-y-auto max-h-[220px] flex flex-col gap-0.5">
         {schedules.map(s => (
           <ShiftCard
             key={s.id}
             schedule={s}
             onClick={onShiftClick}
+            showWhatsApp={isAdmin}
           />
         ))}
       </div>
@@ -233,90 +217,225 @@ function DayCell({
   );
 }
 
-// ── Haupt-Export ───────────────────────────────────
+/** Kompakte Schichtliste für die Tagesansicht */
+function DayViewList({
+  date,
+  schedules,
+  holiday,
+  isAdmin,
+  loading,
+  onAddShift,
+  onShiftClick,
+}: {
+  date: Date;
+  schedules: Schedule[];
+  holiday: GermanHoliday | null;
+  isAdmin: boolean;
+  loading: boolean;
+  onAddShift: (date: Date) => void;
+  onShiftClick: (s: Schedule) => void;
+}) {
+  const weekend = isWeekend(date);
+  const dateLabel = format(date, 'EEEE, d. MMMM yyyy', { locale: de });
+
+  return (
+    <div className={`day-view${weekend ? ' day-view--weekend' : ''}`}>
+      <div className="day-view__header">
+        <div>
+          <h3 className="day-view__title">{dateLabel}</h3>
+          {holiday && (
+            <span className="day-view__holiday">{holiday.shortName}</span>
+          )}
+          {weekend && <span className="day-view__weekend-badge">Wochenende</span>}
+        </div>
+        {isAdmin && (
+          <button
+            type="button"
+            className="btn-primary btn-primary--sm"
+            onClick={() => onAddShift(date)}
+          >
+            + Schicht hinzufügen
+          </button>
+        )}
+      </div>
+
+      {loading && schedules.length === 0 ? (
+        <div className="day-view__empty">Schichten werden geladen…</div>
+      ) : schedules.length === 0 ? (
+        <div className="day-view__empty">Keine Schichten an diesem Tag.</div>
+      ) : (
+        <ul className="day-view__list">
+          {schedules.map((s) => {
+            const customer = s.customers ?? s.clients;
+            const colorClass = STATUS_COLORS[s.status] ?? STATUS_COLORS.scheduled;
+            return (
+              <li key={s.id} className="day-view__item">
+                <button
+                  type="button"
+                  className={`day-view__card ${colorClass}`}
+                  onClick={() => onShiftClick(s)}
+                >
+                  <div className="day-view__card-time">
+                    {formatTimeRange24(s.start_time, s.end_time)}
+                  </div>
+                  <div className="day-view__card-meta">
+                    <span>{s.profiles?.full_name ?? 'Nicht zugewiesen'}</span>
+                    <span className="day-view__card-dot" style={{ background: customer?.color ?? '#94a3b8' }} />
+                    <span>{customer?.name ?? '—'}</span>
+                  </div>
+                  {(s.tasks || s.instructions) && (
+                    <p className="day-view__card-tasks">
+                      {s.tasks || s.instructions}
+                    </p>
+                  )}
+                </button>
+                {isAdmin && (
+                  <ShiftWhatsAppReportButton schedule={s} variant="icon" />
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export default function SchedulerCalendar() {
-  const { profile, isAdmin } = useCurrentProfile();
+  const { user, isAdmin } = useAuth();
+  const profileId = user?.id;
+  const { profiles, loading: profilesLoading, getProfiles } = useProfiles();
 
-  const [viewMode,    setViewMode]    = useState<ViewMode>('monat');
+  const [viewMode, setViewMode] = useState<ViewMode>('monat');
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [schedules,   setSchedules]   = useState<Schedule[]>([]);
-  const [loading,     setLoading]     = useState(false);
-  const [selectedShift, setSelectedShift] = useState<Schedule | null>(null);
-  const [showAddModal,  setShowAddModal]  = useState(false);
-  const [addDate,       setAddDate]       = useState<Date | null>(null);
+  const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  // Feiertage für das angezeigte Jahr
-  const holidays = useMemo(
-    () => getGermanHolidays(currentDate.getFullYear()),
-    [currentDate.getFullYear()]
+  /** Admin-Filter: null = alle Schichten, sonst nur dieser Mitarbeiter */
+  const [filterEmployeeId, setFilterEmployeeId] = useState<string | null>(null);
+
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerMode, setDrawerMode] = useState<ShiftDrawerMode>('view');
+  const [selectedSchedule, setSelectedSchedule] = useState<Schedule | null>(null);
+  const [createDate, setCreateDate] = useState<string | null>(null);
+
+  const fetchGeneration = useRef(0);
+
+  // Admin: Mitarbeiterliste für linke Spalte (role = employee)
+  const activeEmployees = useMemo(
+    () => profiles.filter((p) => p.role === 'employee'),
+    [profiles]
   );
 
-  // Datumsbereich je nach Ansicht
+  useEffect(() => {
+    if (isAdmin) {
+      void getProfiles();
+    }
+  }, [isAdmin, getProfiles]);
+
   const { rangeStart, rangeEnd, displayDays } = useMemo(() => {
     let start: Date, end: Date;
 
     if (viewMode === 'tag') {
       start = currentDate;
-      end   = currentDate;
+      end = currentDate;
     } else if (viewMode === 'woche') {
       start = startOfWeek(currentDate, { weekStartsOn: 1 });
-      end   = endOfWeek(currentDate,   { weekStartsOn: 1 });
+      end = endOfWeek(currentDate, { weekStartsOn: 1 });
+    } else if (viewMode === 'zwei_wochen') {
+      const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
+      start = weekStart;
+      end = endOfWeek(addWeeks(weekStart, 1), { weekStartsOn: 1 });
     } else if (viewMode === 'monat') {
       const ms = startOfMonth(currentDate);
       const me = endOfMonth(currentDate);
       start = startOfWeek(ms, { weekStartsOn: 1 });
-      end   = endOfWeek(me,   { weekStartsOn: 1 });
+      end = endOfWeek(me, { weekStartsOn: 1 });
     } else {
-      // Jahr: zeige aktuellen Monat als Überblick
       start = startOfMonth(currentDate);
-      end   = endOfMonth(currentDate);
+      end = endOfMonth(currentDate);
     }
 
     return {
       rangeStart: start,
-      rangeEnd:   end,
+      rangeEnd: end,
       displayDays: eachDayOfInterval({ start, end }),
     };
   }, [viewMode, currentDate]);
 
-  // Schichten laden
+  const holidays = useMemo(() => {
+    const years = new Set<number>([
+      currentDate.getFullYear(),
+      rangeStart.getFullYear(),
+      rangeEnd.getFullYear(),
+    ]);
+    return Array.from(years).flatMap((y) => getGermanHolidays(y));
+  }, [currentDate, rangeStart, rangeEnd]);
+
+  /**
+   * Schichten laden:
+   * - Mitarbeiter: RLS + employee_id = eigene ID
+   * - Admin ohne Filter: alle Schichten
+   * - Admin mit Sidebar-Auswahl: nur gewählter Mitarbeiter
+   */
   const loadSchedules = useCallback(async () => {
+    const gen = ++fetchGeneration.current;
     setLoading(true);
     try {
       let query = supabase
         .from('schedules')
-        .select(`
-          id, shift_date, start_time, end_time,
-          instructions, status, employee_id, client_id,
-          profiles ( id, full_name, avatar_url, role ),
-          clients  ( id, name, color )
-        `)
+        .select(SCHEDULE_SELECT)
         .gte('shift_date', format(rangeStart, 'yyyy-MM-dd'))
-        .lte('shift_date', format(rangeEnd,   'yyyy-MM-dd'))
+        .lte('shift_date', format(rangeEnd, 'yyyy-MM-dd'))
         .order('start_time', { ascending: true });
 
-      // Employee sieht nur eigene Schichten
-      if (!isAdmin && profile?.id) {
-        query = query.eq('employee_id', profile.id);
+      if (!isAdmin && profileId) {
+        query = query.eq('employee_id', profileId);
+      } else if (isAdmin && filterEmployeeId) {
+        query = query.eq('employee_id', filterEmployeeId);
       }
 
       const { data, error } = await query;
+      if (gen !== fetchGeneration.current) return;
       if (error) throw error;
-      setSchedules((data as any[] ?? []).map(s => ({
-        ...s,
-        profiles: Array.isArray(s.profiles) ? s.profiles[0] : s.profiles,
-        clients: Array.isArray(s.clients) ? s.clients[0] : s.clients,
-      })) as Schedule[]);
-    } catch (err: any) {
-      console.error('Fehler beim Laden der Schichten:', err.message);
+
+      setSchedules(
+        (data ?? []).map((row) =>
+          normalizeScheduleRow(row as Record<string, unknown>)
+        )
+      );
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Unbekannter Fehler';
+      console.error('Fehler beim Laden der Schichten:', message);
+      setSchedules([]);
     } finally {
-      setLoading(false);
+      if (gen === fetchGeneration.current) {
+        setLoading(false);
+      }
     }
-  }, [rangeStart, rangeEnd, isAdmin, profile?.id]);
+  }, [rangeStart, rangeEnd, isAdmin, profileId, filterEmployeeId]);
 
-  useEffect(() => { loadSchedules(); }, [loadSchedules]);
+  useEffect(() => {
+    void loadSchedules();
+  }, [loadSchedules]);
 
-  // Schichten pro Tag gruppieren
+  useEffect(() => {
+    const channel = supabase
+      .channel('scheduler-calendar-schedules')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'schedules' },
+        () => {
+          void loadSchedules();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [loadSchedules]);
+
   const schedulesByDate = useMemo(() => {
     const map: Record<string, Schedule[]> = {};
     for (const s of schedules) {
@@ -326,227 +445,360 @@ export default function SchedulerCalendar() {
     return map;
   }, [schedules]);
 
-  // Navigation
   const navigate = (dir: number) => {
-    if (viewMode === 'tag') {
-      setCurrentDate(dir > 0 ? addDays(currentDate, 1) : subDays(currentDate, 1));
-    } else if (viewMode === 'woche') {
-      setCurrentDate(dir > 0 ? addWeeks(currentDate, 1) : subWeeks(currentDate, 1));
-    } else if (viewMode === 'monat') {
-      setCurrentDate(dir > 0 ? addMonths(currentDate, 1) : subMonths(currentDate, 1));
-    } else {
-      setCurrentDate(dir > 0 ? addMonths(currentDate, 1) : subMonths(currentDate, 1));
-    }
+    setCurrentDate((prev) => {
+      if (viewMode === 'tag') {
+        return dir > 0 ? addDays(prev, 1) : subDays(prev, 1);
+      }
+      if (viewMode === 'woche') {
+        return dir > 0 ? addWeeks(prev, 1) : subWeeks(prev, 1);
+      }
+      if (viewMode === 'zwei_wochen') {
+        return dir > 0 ? addWeeks(prev, 2) : subWeeks(prev, 2);
+      }
+      return dir > 0 ? addMonths(prev, 1) : subMonths(prev, 1);
+    });
   };
 
   const goToToday = () => setCurrentDate(new Date());
 
-  // Handler
-  const handleAddShift = (date: Date) => {
-    setAddDate(date);
-    setShowAddModal(true);
+  const openCreateDrawer = (date: Date) => {
+    if (!isAdmin) return;
+    setDrawerMode('create');
+    setSelectedSchedule(null);
+    setCreateDate(format(date, 'yyyy-MM-dd'));
+    setDrawerOpen(true);
   };
 
-  const handleShiftClick = (schedule: Schedule) => {
-    setSelectedShift(schedule);
-    // TODO: Open drawer/modal for shift details
-    console.log('Selected shift:', schedule);
+  const openViewDrawer = (schedule: Schedule) => {
+    setDrawerMode('view');
+    setSelectedSchedule(schedule);
+    setCreateDate(null);
+    setDrawerOpen(true);
   };
 
-  // Header Titel
+  const closeDrawer = () => {
+    setDrawerOpen(false);
+    setSelectedSchedule(null);
+    setCreateDate(null);
+  };
+
+  const handleSaveShift = async (input: {
+    employee_id: string | null;
+    customer_id: string;
+    shift_date: string;
+    start_time: string;
+    end_time: string;
+    tasks: string | null;
+    recurrence: ScheduleRecurrence;
+    occurrences: number;
+    status: Schedule['status'];
+  }) => {
+    const { error } = await supabase.rpc('create_schedules_with_recurrence', {
+      p_employee_id: input.employee_id,
+      p_customer_id: input.customer_id,
+      p_shift_date: input.shift_date,
+      p_start_time: input.start_time,
+      p_end_time: input.end_time,
+      p_tasks: input.tasks,
+      p_recurrence: input.recurrence,
+      p_status: input.status,
+      p_occurrences: input.occurrences,
+    });
+
+    if (error) throw new Error(error.message);
+    toast.success("Schicht gespeichert!");
+    await loadSchedules();
+  };
+
+  const handleUpdateShift = async (
+    id: string,
+    data: Partial<
+      Omit<Schedule, 'id' | 'created_at' | 'profiles' | 'customers' | 'clients'>
+    >
+  ) => {
+    const payload = {
+      ...data,
+      ...(data.tasks !== undefined ? { instructions: data.tasks } : {}),
+    };
+    const { error } = await supabase.from('schedules').update(payload).eq('id', id);
+    if (error) throw new Error(error.message);
+    toast.success("Schicht aktualisiert!");
+    await loadSchedules();
+  };
+
+  const handleDeleteShift = async (id: string) => {
+    const { error } = await supabase.from('schedules').delete().eq('id', id);
+    if (error) throw new Error(error.message);
+    toast.success("Schicht gelöscht.");
+    await loadSchedules();
+  };
+
   const headerTitle = useMemo(() => {
     if (viewMode === 'tag') {
       return format(currentDate, 'EEEE, d. MMMM yyyy', { locale: de });
-    } else if (viewMode === 'woche') {
+    }
+    if (viewMode === 'woche') {
       const weekNum = getISOWeek(currentDate);
       return `KW ${weekNum} – ${format(rangeStart, 'd. MMM')} bis ${format(rangeEnd, 'd. MMMM yyyy')}`;
-    } else if (viewMode === 'monat') {
-      return `${MONTHS_DE[currentDate.getMonth()]} ${currentDate.getFullYear()}`;
-    } else {
-      return `${currentDate.getFullYear()}`;
     }
+    if (viewMode === 'zwei_wochen') {
+      return `2 Wochen – ${format(rangeStart, 'd. MMM')} bis ${format(rangeEnd, 'd. MMM yyyy')}`;
+    }
+    if (viewMode === 'monat') {
+      return `${MONTHS_DE[currentDate.getMonth()]} ${currentDate.getFullYear()}`;
+    }
+    return `${currentDate.getFullYear()}`;
   }, [viewMode, currentDate, rangeStart, rangeEnd]);
 
-  // Grid-Spalten für Monatsansicht
-  const weeksInMonth = useMemo(() => {
-    const weeks: Date[][] = [];
-    let currentWeek: Date[] = [];
-    
-    for (const day of displayDays) {
-      currentWeek.push(day);
-      if (currentWeek.length === 7) {
-        weeks.push(currentWeek);
-        currentWeek = [];
-      }
-    }
-    
-    if (currentWeek.length > 0) {
-      weeks.push(currentWeek);
-    }
-    
-    return weeks;
-  }, [displayDays]);
+  const filterLabel = useMemo(() => {
+    if (!isAdmin || !filterEmployeeId) return null;
+    const emp = activeEmployees.find((e) => e.id === filterEmployeeId);
+    return emp?.full_name ?? null;
+  }, [isAdmin, filterEmployeeId, activeEmployees]);
 
-  return (
-    <div className="flex flex-col h-full bg-white">
-      {/* ── Header ───────────────────────────────── */}
-      <div className="border-b border-gray-200 px-6 py-4">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => navigate(-1)}
-              className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
-            >
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                <polyline points="12,4 6,10 12,16" />
-              </svg>
-            </button>
-            
-            <h2 className="text-xl font-semibold text-gray-900 min-w-[280px] text-center">
-              {headerTitle}
-            </h2>
-            
-            <button
-              onClick={() => navigate(1)}
-              className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
-            >
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                <polyline points="8,4 14,10 8,16" />
-              </svg>
-            </button>
-          </div>
+  const calendarPanel = (
+    <div className="scheduler-calendar flex flex-col h-full min-h-0 bg-white">
+      <header className="scheduler-calendar__header">
+        <div className="scheduler-calendar__nav">
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            className="scheduler-calendar__nav-btn"
+            aria-label="Vorheriger Zeitraum"
+          >
+            ‹
+          </button>
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={goToToday}
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              Heute
-            </button>
+          <p className="scheduler-calendar__title" role="heading" aria-level={2}>
+            {headerTitle}
+            {filterLabel && (
+              <span className="scheduler-calendar__filter-badge">
+                {filterLabel}
+              </span>
+            )}
+            {loading && (
+              <span className="scheduler-calendar__loading-hint"> · lädt…</span>
+            )}
+          </p>
 
-            <div className="flex bg-gray-100 rounded-lg p-1">
-              {(['tag', 'woche', 'monat'] as ViewMode[]).map(mode => (
-                <button
-                  key={mode}
-                  onClick={() => setViewMode(mode)}
-                  className={`
-                    px-3 py-1.5 text-sm font-medium rounded-md transition-all
-                    ${viewMode === mode
-                      ? 'bg-white text-gray-900 shadow-sm'
-                      : 'text-gray-600 hover:text-gray-900'
-                    }
-                  `}
-                >
-                  {mode === 'tag' && 'Tag'}
-                  {mode === 'woche' && 'Woche'}
-                  {mode === 'monat' && 'Monat'}
-                </button>
-              ))}
-            </div>
+          <button
+            type="button"
+            onClick={() => navigate(1)}
+            className="scheduler-calendar__nav-btn"
+            aria-label="Nächster Zeitraum"
+          >
+            ›
+          </button>
+        </div>
+
+        <div className="scheduler-calendar__actions">
+          <button type="button" onClick={goToToday} className="scheduler-calendar__btn-today">
+            Heute
+          </button>
+
+          <div className="scheduler-calendar__view-tabs" role="tablist" aria-label="Kalenderansicht">
+            {(['tag', 'woche', 'zwei_wochen', 'monat'] as ViewMode[]).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                role="tab"
+                aria-selected={viewMode === mode}
+                onClick={() => setViewMode(mode)}
+                className={`scheduler-calendar__view-tab${viewMode === mode ? ' scheduler-calendar__view-tab--active' : ''}`}
+              >
+                {mode === 'tag' && 'Tag'}
+                {mode === 'woche' && 'Woche'}
+                {mode === 'zwei_wochen' && '2 Wochen'}
+                {mode === 'monat' && 'Monat'}
+              </button>
+            ))}
           </div>
         </div>
 
-        {/* Wochentage-Header für Monatsansicht */}
-        {viewMode === 'monat' && (
-          <div className="grid grid-cols-7 gap-0 mt-4">
-            {WEEKDAYS.map(day => (
+        {(viewMode === 'monat' || viewMode === 'woche' || viewMode === 'zwei_wochen') && (
+          <div className="scheduler-calendar__weekdays w-full basis-full">
+            {WEEKDAYS.map((label, index) => (
               <div
-                key={day}
-                className="text-center text-xs font-semibold text-gray-500 uppercase tracking-wide py-2"
+                key={label}
+                className={`scheduler-calendar__weekday${
+                  index >= 5 ? ' scheduler-calendar__weekday--weekend' : ''
+                }`}
               >
-                {day}
+                {label}
               </div>
             ))}
           </div>
         )}
-      </div>
+      </header>
 
-      {/* ── Calendar Grid ────────────────────────── */}
-      <div className="flex-1 overflow-auto">
-        {loading && schedules.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-gray-500">
-            Schichten werden geladen…
-          </div>
-        ) : viewMode === 'monat' ? (
-          <div className="grid grid-cols-7 gap-0 border-l border-t border-gray-200">
-            {weeksInMonth.map((week, weekIdx) => (
-              <React.Fragment key={weekIdx}>
-                {week.map(day => {
-                  const dateStr = format(day, 'yyyy-MM-dd');
-                  const daySchedules = schedulesByDate[dateStr] || [];
-                  const holiday = getHolidayForDate(dateStr, holidays);
-                  const isCurrent = isSameMonth(day, currentDate);
+      <div className="flex-1 overflow-auto min-h-0">
+        {viewMode === 'tag' && (
+          <DayViewList
+            date={currentDate}
+            schedules={schedulesByDate[format(currentDate, 'yyyy-MM-dd')] || []}
+            holiday={getHolidayForDate(format(currentDate, 'yyyy-MM-dd'), holidays)}
+            isAdmin={isAdmin}
+            loading={loading}
+            onAddShift={openCreateDrawer}
+            onShiftClick={openViewDrawer}
+          />
+        )}
 
-                  return (
-                    <DayCell
-                      key={dateStr}
-                      date={day}
-                      schedules={daySchedules}
-                      holiday={holiday}
-                      isCurrentMonth={isCurrent}
-                      onAddShift={handleAddShift}
-                      onShiftClick={handleShiftClick}
-                      isAdmin={isAdmin}
-                    />
-                  );
-                })}
-              </React.Fragment>
-            ))}
+        {viewMode === 'woche' && (
+          <div
+            className="week-view-grid grid grid-cols-7 gap-0 w-full border-l border-t border-gray-200"
+            style={{ gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}
+            role="grid"
+            aria-label="Wochenkalender"
+          >
+            {loading && schedules.length === 0 ? (
+              Array.from({ length: 7 }).map((_, i) => (
+                <div
+                  key={`week-skel-${i}`}
+                  className="calendar-day min-h-[200px] p-2 border-b border-r border-gray-100 bg-gray-50/30 animate-pulse"
+                />
+              ))
+            ) : (
+              displayDays.map((day) => {
+                const dateStr = format(day, 'yyyy-MM-dd');
+                const daySchedules = schedulesByDate[dateStr] || [];
+                const holiday = getHolidayForDate(dateStr, holidays);
+
+                return (
+                  <DayCell
+                    key={dateStr}
+                    date={day}
+                    schedules={daySchedules}
+                    holiday={holiday}
+                    isCurrentMonth
+                    onAddShift={openCreateDrawer}
+                    onShiftClick={openViewDrawer}
+                    isAdmin={isAdmin}
+                  />
+                );
+              })
+            )}
           </div>
-        ) : (
-          <div className="flex items-center justify-center h-full text-gray-500">
-            {viewMode === 'tag' && 'Tagesansicht kommt bald…'}
-            {viewMode === 'woche' && 'Wochenansicht kommt bald…'}
-            {viewMode === 'jahr' && 'Jahresansicht kommt bald…'}
+        )}
+
+        {viewMode === 'zwei_wochen' && (
+          <div
+            className="week-view-grid grid grid-cols-7 gap-0 w-full border-l border-t border-gray-200"
+            style={{ gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}
+            role="grid"
+            aria-label="2-Wochenkalender"
+          >
+            {loading && schedules.length === 0 ? (
+              Array.from({ length: 14 }).map((_, i) => (
+                <div
+                  key={`2w-skel-${i}`}
+                  className="calendar-day min-h-[200px] p-2 border-b border-r border-gray-100 bg-gray-50/30 animate-pulse"
+                />
+              ))
+            ) : (
+              displayDays.map((day) => {
+                const dateStr = format(day, 'yyyy-MM-dd');
+                const daySchedules = schedulesByDate[dateStr] || [];
+                const holiday = getHolidayForDate(dateStr, holidays);
+
+                return (
+                  <DayCell
+                    key={dateStr}
+                    date={day}
+                    schedules={daySchedules}
+                    holiday={holiday}
+                    isCurrentMonth
+                    onAddShift={openCreateDrawer}
+                    onShiftClick={openViewDrawer}
+                    isAdmin={isAdmin}
+                  />
+                );
+              })
+            )}
+          </div>
+        )}
+
+        {viewMode === 'monat' && (
+          <div
+            className="month-view-grid grid grid-cols-7 gap-0 w-full border-l border-t border-gray-200"
+            style={{ gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}
+            role="grid"
+            aria-label="Monatskalender"
+          >
+            {loading && schedules.length === 0 ? (
+              Array.from({ length: displayDays.length || 42 }).map((_, i) => (
+                <div
+                  key={`skeleton-${i}`}
+                  className={`calendar-day min-h-[120px] min-w-0 p-2 border-b border-r border-gray-100 bg-gray-50/30 animate-pulse${
+                    i % 7 >= 5 ? ' calendar-day--weekend' : ''
+                  }`}
+                />
+              ))
+            ) : (
+              displayDays.map(day => {
+                const dateStr = format(day, 'yyyy-MM-dd');
+                const daySchedules = schedulesByDate[dateStr] || [];
+                const holiday = getHolidayForDate(dateStr, holidays);
+                const isCurrent = isSameMonth(day, currentDate);
+
+                return (
+                  <DayCell
+                    key={dateStr}
+                    date={day}
+                    schedules={daySchedules}
+                    holiday={holiday}
+                    isCurrentMonth={isCurrent}
+                    onAddShift={openCreateDrawer}
+                    onShiftClick={openViewDrawer}
+                    isAdmin={isAdmin}
+                  />
+                );
+              })
+            )}
           </div>
         )}
       </div>
+    </div>
+  );
 
-      {/* ── Add Shift Modal (Placeholder) ────────── */}
-      {showAddModal && addDate && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-            <h3 className="text-lg font-semibold mb-4">
-              Schicht hinzufügen – {format(addDate, 'd. MMMM yyyy', { locale: de })}
-            </h3>
-            <p className="text-gray-600 mb-4">
-              Modal-Integration mit AddShiftModal kommt bald…
-            </p>
-            <button
-              onClick={() => setShowAddModal(false)}
-              className="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
-            >
-              Schließen
-            </button>
-          </div>
-        </div>
+  return (
+    <div className={`schedule-workspace${isAdmin ? ' schedule-workspace--admin' : ''}`}>
+      {isAdmin && (
+        <EmployeeSidebar
+          employees={activeEmployees}
+          selectedEmployeeId={filterEmployeeId}
+          onSelectEmployee={setFilterEmployeeId}
+          loading={profilesLoading}
+        />
       )}
 
-      {/* ── Shift Details (Placeholder) ──────────── */}
-      {selectedShift && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-            <h3 className="text-lg font-semibold mb-4">
-              Schichtdetails
-            </h3>
-            <div className="space-y-2 text-sm">
-              <p><span className="font-medium">Datum:</span> {selectedShift.shift_date}</p>
-              <p><span className="font-medium">Zeit:</span> {selectedShift.start_time.slice(0,5)} – {selectedShift.end_time.slice(0,5)}</p>
-              <p><span className="font-medium">Mitarbeiter:</span> {selectedShift.profiles?.full_name || 'Nicht zugewiesen'}</p>
-              <p><span className="font-medium">Kunde:</span> {selectedShift.clients?.name || '—'}</p>
-              <p><span className="font-medium">Status:</span> {STATUS_DE[selectedShift.status] || selectedShift.status}</p>
-              {selectedShift.instructions && (
-                <p><span className="font-medium">Aufgaben:</span> {selectedShift.instructions}</p>
-              )}
-            </div>
-            <button
-              onClick={() => setSelectedShift(null)}
-              className="w-full mt-4 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
-            >
-              Schließen
-            </button>
-          </div>
-        </div>
+      <div className="schedule-workspace__main">
+        {!isAdmin && (
+          <p className="schedule-workspace__employee-hint">
+            Ihre geplanten Einsätze — nur zur Ansicht.
+          </p>
+        )}
+        {calendarPanel}
+      </div>
+
+      {drawerOpen && (
+        <ShiftDrawer
+          mode={drawerMode}
+          schedule={selectedSchedule}
+          defaultDate={createDate ?? undefined}
+          defaultEmployeeId={filterEmployeeId ?? undefined}
+          onClose={closeDrawer}
+          onSave={isAdmin ? handleSaveShift : undefined}
+          onUpdate={isAdmin ? handleUpdateShift : undefined}
+          onDelete={isAdmin ? handleDeleteShift : undefined}
+          onRequestEdit={
+            isAdmin && selectedSchedule
+              ? () => setDrawerMode('edit')
+              : undefined
+          }
+          isAdmin={isAdmin}
+        />
       )}
     </div>
   );

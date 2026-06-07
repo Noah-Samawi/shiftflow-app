@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { useSchedules } from "../hooks/useSchedules";
 import { useAuth } from "../hooks/useAuth";
+import { formatTimeRange24 } from "../utils/formatTime";
 import type { Schedule } from "../types/database";
 
 /** Returns the Monday of the current week. */
@@ -56,14 +57,6 @@ export default function ScheduleView() {
       return d.toISOString().slice(0, 10);
     });
   }, [monday]);
-
-  const formatTime = (t: string) => {
-    const [h, m] = t.split(":");
-    const hour = parseInt(h, 10);
-    const ampm = hour >= 12 ? "PM" : "AM";
-    const h12 = hour % 12 || 12;
-    return `${h12}:${m} ${ampm}`;
-  };
 
   const formatDate = (dateStr: string) => {
     const d = new Date(dateStr + "T00:00:00");
@@ -124,14 +117,16 @@ export default function ScheduleView() {
                   className="shift-card"
                   style={{
                     borderLeftColor:
-                      s.clients?.color || STATUS_COLORS[s.status],
+                      s.customers?.color ??
+                        s.clients?.color ??
+                        STATUS_COLORS[s.status],
                   }}
                 >
                   <div className="shift-time">
-                    {formatTime(s.start_time)} – {formatTime(s.end_time)}
+                    {formatTimeRange24(s.start_time, s.end_time)}
                   </div>
                   <div className="shift-client">
-                    {s.clients?.name || "Unbekannter Kunde"}
+                    {s.customers?.name ?? s.clients?.name ?? "Unbekannter Kunde"}
                   </div>
                   <div className="shift-employee">
                     {s.profiles?.full_name || "Nicht zugewiesen"}

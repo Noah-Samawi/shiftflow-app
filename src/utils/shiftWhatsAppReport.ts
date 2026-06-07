@@ -1,0 +1,45 @@
+import type { Schedule } from "../types/database";
+import { formatTime24 } from "./formatTime";
+import { buildWhatsAppUrl } from "./whatsapp";
+
+/**
+ * Baut die Admin-Nachricht für den automatischen Schichtenreport (WhatsApp).
+ * Datenquelle: geladene Schicht inkl. Join profiles + customers.
+ */
+export function buildShiftReportMessage(schedule: Schedule): string {
+  const employeeName =
+    schedule.profiles?.full_name?.trim() || "Mitarbeiter/in";
+  const customer = schedule.customers ?? schedule.clients;
+  const customerName = customer?.name?.trim() || "—";
+  const address = customer?.address?.trim() || "—";
+  const tasks =
+    schedule.tasks?.trim() ||
+    schedule.instructions?.trim() ||
+    "Keine besonderen Aufgaben hinterlegt.";
+
+  const dateLabel = new Date(schedule.shift_date + "T12:00:00").toLocaleDateString(
+    "de-DE",
+    { weekday: "long", day: "numeric", month: "long", year: "numeric" }
+  );
+  const timeFrom = formatTime24(schedule.start_time);
+  const timeTo = formatTime24(schedule.end_time);
+
+  return [
+    `Hallo ${employeeName}, hier ist dein Dienstplan-Einsatz:`,
+    `📅 Datum: ${dateLabel}`,
+    `⏰ Zeit: ${timeFrom} - ${timeTo} Uhr`,
+    `👤 Kunde: ${customerName}`,
+    `📍 Adresse: ${address}`,
+    `📝 Deine Aufgaben: ${tasks}`,
+    "Bitte gib mir eine kurze Bestätigung!",
+  ].join("\n");
+}
+
+/** wa.me-Link an die Telefonnummer des zugewiesenen Mitarbeiters inkl. vorgefülltem Text */
+export function buildShiftReportWhatsAppUrl(schedule: Schedule): string | null {
+  const phone = schedule.profiles?.phone;
+  const base = buildWhatsAppUrl(phone);
+  if (!base) return null;
+  const text = encodeURIComponent(buildShiftReportMessage(schedule));
+  return `${base}?text=${text}`;
+}

@@ -76,8 +76,9 @@ export default function SchedulerGrid({ weekStart }: SchedulerGridProps) {
       }
     }
     for (const s of schedules) {
-      if (map[s.client_id]?.[s.shift_date]) {
-        map[s.client_id][s.shift_date].push(s);
+      const cid = s.customer_id ?? (s as Schedule & { client_id?: string }).client_id;
+      if (cid && map[cid]?.[s.shift_date]) {
+        map[cid][s.shift_date].push(s);
       }
     }
     return map;
@@ -99,7 +100,10 @@ export default function SchedulerGrid({ weekStart }: SchedulerGridProps) {
   }, []);
 
   const handleCreateSchedule = async (
-    data: Omit<Schedule, "id" | "created_at" | "profiles" | "clients">
+    data: Omit<
+      Schedule,
+      "id" | "created_at" | "profiles" | "customers" | "clients" | "series_id"
+    >
   ) => {
     await createSchedule(data);
     // Refresh after creation
@@ -239,13 +243,17 @@ export default function SchedulerGrid({ weekStart }: SchedulerGridProps) {
       )}
 
       {/* Shift Details Drawer */}
-      <ShiftDrawer
-        schedule={drawerSchedule}
-        onClose={() => setDrawerSchedule(null)}
-        onUpdate={handleUpdateSchedule}
-        onDelete={handleDeleteSchedule}
-        isAdmin={isAdmin}
-      />
+      {drawerSchedule && (
+        <ShiftDrawer
+          mode="view"
+          schedule={drawerSchedule}
+          onClose={() => setDrawerSchedule(null)}
+          onUpdate={handleUpdateSchedule}
+          onDelete={handleDeleteSchedule}
+          onRequestEdit={isAdmin ? () => {} : undefined}
+          isAdmin={isAdmin}
+        />
+      )}
     </div>
   );
 }

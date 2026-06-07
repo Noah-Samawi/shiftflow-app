@@ -5,8 +5,8 @@ import { useProfiles } from "../hooks/useProfiles";
 interface AddShiftModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (data: Omit<Schedule, "id" | "created_at" | "profiles" | "clients">) => Promise<void>;
-  onUpdate?: (id: string, data: Partial<Omit<Schedule, "id" | "created_at" | "profiles" | "clients">>) => Promise<void>;
+  onSave: (data: Omit<Schedule, "id" | "created_at" | "profiles" | "customers" | "clients" | "series_id">) => Promise<void>;
+  onUpdate?: (id: string, data: Partial<Omit<Schedule, "id" | "created_at" | "profiles" | "customers" | "clients">>) => Promise<void>;
   clientId: string;
   clientName: string;
   date: string;
@@ -43,7 +43,7 @@ export default function AddShiftModal({
         setEmployeeId(editSchedule.employee_id || "");
         setStartTime(editSchedule.start_time);
         setEndTime(editSchedule.end_time);
-        setInstructions(editSchedule.instructions || "");
+        setInstructions(editSchedule.tasks || editSchedule.instructions || "");
         setStatus(editSchedule.status);
       } else {
         setEmployeeId("");
@@ -67,17 +67,18 @@ export default function AddShiftModal({
           employee_id: employeeId || null,
           start_time: startTime,
           end_time: endTime,
-          instructions: instructions || null,
+          tasks: instructions || null,
           status,
         });
       } else {
         await onSave({
           employee_id: employeeId || null,
-          client_id: clientId,
+          customer_id: clientId,
           shift_date: date,
           start_time: startTime,
           end_time: endTime,
-          instructions: instructions || null,
+          tasks: instructions || null,
+          recurrence: "once",
           status: "scheduled",
         });
       }

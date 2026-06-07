@@ -11,7 +11,8 @@ export interface Profile {
   created_at: string;
 }
 
-export interface Client {
+/** Kunde (public.customers) – nur vom Admin verwaltet */
+export interface Customer {
   id: string;
   name: string;
   contact_person: string | null;
@@ -22,19 +23,30 @@ export interface Client {
   created_at: string;
 }
 
+/** @deprecated Alias für Migration – bitte Customer verwenden */
+export type Client = Customer;
+
+export type ScheduleRecurrence = "once" | "daily_workdays" | "daily_all" | "weekly" | "biweekly";
+
 export interface Schedule {
   id: string;
   employee_id: string | null;
-  client_id: string;
+  customer_id: string;
   shift_date: string;
   start_time: string;
   end_time: string;
-  instructions: string | null;
+  /** Spezifische Aufgaben für diese Schicht */
+  tasks: string | null;
+  /** Legacy-Feld – wird aus DB mitgelesen, bevorzugt tasks */
+  instructions?: string | null;
+  recurrence: ScheduleRecurrence;
+  series_id: string | null;
   status: "scheduled" | "confirmed" | "completed" | "cancelled";
   created_at: string;
-  // Joined fields
   profiles?: Profile | null;
-  clients?: Client | null;
+  customers?: Customer | null;
+  /** @deprecated – alter Join-Name */
+  clients?: Customer | null;
 }
 
 export interface Comment {
@@ -43,7 +55,6 @@ export interface Comment {
   user_id: string | null;
   message: string;
   created_at: string;
-  // Joined fields
   profiles?: Pick<Profile, "id" | "full_name" | "avatar_url"> | null;
 }
 
