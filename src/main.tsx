@@ -5,24 +5,32 @@ import "./index.css";
 import App from "./App.tsx";
 import { AuthProvider } from "./context/AuthContext.tsx";
 
-// ── Verhindert Auth-Dauerfeuer bei 429 ─────────────────────
-let authErrorCount = 0;
-const MAX_AUTH_ERRORS = 3;
+// ── Globaler 429 Guard ──────────────────────────────────────
+// Verhindert dass Rate-Limit-Fehler zur Endlosschleife werden
+let rateLimitHits = 0;
+const RATE_LIMIT_THRESHOLD = 2;
 
 window.addEventListener("unhandledrejection", (event) => {
-  const msg = event.reason?.message ?? "";
-  if (
+  const msg = (
+    event.reason?.message ??
+    event.reason?.toString() ??
+    ""
+  ).toLowerCase();
+  const isRateLimit =
     msg.includes("429") ||
-    msg.includes("Too Many") ||
+    msg.includes("too many") ||
     msg.includes("rate limit") ||
-    msg.includes("over_request_rate_limit")
-  ) {
-    authErrorCount++;
-    if (authErrorCount >= MAX_AUTH_ERRORS) {
+    msg.includes("over_request_rate_limit") ||
+    msg.includes("email rate limit");
+
+  if (isRateLimit) {
+    rateLimitHits++;
+    event.preventDefault(); // Verhindert Console-Error
+    if (rateLimitHits >= RATE_LIMIT_THRESHOLD) {
       console.warn(
-        "ShiftFlow: Rate-Limit erkannt. Auth-Anfragen werden pausiert."
+        `⚠️ ShiftFlow: Rate-Limit erreicht (${rateLimitHits}x). ` +
+          "Bitte 15 Minuten warten."
       );
-      event.preventDefault();
     }
   }
 });
@@ -41,12 +49,15 @@ if ("serviceWorker" in navigator) {
   });
 }
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <AuthProvider>
-      <BrowserRouter>
-        <App />
-      </BrowserRouter>
-    </AuthProvider>
-  </StrictMode>
+const rootElement = document.getElementById("root")!;
+const app = (
+  <AuthProvider>
+    <BrowserRouter>
+      <App />
+    </BrowserRouter>
+  </AuthProvider>
+);
+
+createRoot(rootElement).render(
+  import.meta.env.DEV ? <StrictMode>{app}</StrictMode> : app
 );

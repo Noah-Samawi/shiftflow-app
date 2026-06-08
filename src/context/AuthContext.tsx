@@ -55,24 +55,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [roleLoading, setRoleLoading] = useState(false);
   const roleFetchId = useRef(0);
 
+  // ── Verhindert parallele Profil-Requests & doppelte Initialisierung ──
+  const profileLoadingRef = useRef(false);
+  const initDoneRef = useRef(false);
+
   const applyRole = useCallback(
     async (sessionUser: User) => {
+      // Guard: Kein paralleler Load
+      if (profileLoadingRef.current) return;
+      profileLoadingRef.current = true;
+
       const fetchId = ++roleFetchId.current;
       setRoleLoading(true);
 
-      const loaded = await fetchUserRole(sessionUser.id, sessionUser.email);
+      try {
+        const loaded = await fetchUserRole(sessionUser.id, sessionUser.email);
 
-      if (fetchId !== roleFetchId.current) return;
+        if (fetchId !== roleFetchId.current) return;
 
-      setRole(loaded);
-      setRoleLoading(false);
+        setRole(loaded);
+        setRoleLoading(false);
 
-      if (import.meta.env.DEV) {
-        console.info("[Auth] Rolle geladen:", {
-          userId: sessionUser.id,
-          email: sessionUser.email,
-          role: loaded,
-        });
+        if (import.meta.env.DEV) {
+          console.info("[Auth] Rolle geladen:", {
+            userId: sessionUser.id,
+            email: sessionUser.email,
+            role: loaded,
+          });
+        }
+      } catch (err: any) {
+        // 429 abfangen – nicht weiter versuchen
+        if (
+          err?.code === "429" ||
+          err?.message?.includes("Too Many") ||
+          err?.message?.includes("rate limit")
+        ) {
+          console.warn("Rate-Limit: Profil-Laden pausiert.");
+          setRoleLoading(false);
+          return;
+        }
+        console.error("Profil laden:", err?.message);
+        setRoleLoading(false);
+      } finally {
+        profileLoadingRef.current = false;
       }
     },
     []
@@ -165,6 +190,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    // ── Nur EINMAL initialisieren ───────────────────────────
+    if (initDoneRef.current) return;
+    initDoneRef.current = true;
+
     let mounted = true;
 
     const bootstrap = async () => {
@@ -182,6 +211,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           await applyRole(sessionUser);
         } else {
           setRole(null);
+        }
+      } catch (err: any) {
+        // 429 sofort abfangen
+        if (
+          err?.message?.includes("429") ||
+          err?.message?.includes("Too Many")
+        ) {
+          console.warn("Rate-Limit beim Session-Init.");
+        } else {
+          console.error("Session-Init:", err?.message);
         }
       } finally {
         if (mounted) setLoading(false);
@@ -207,6 +246,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (ROLE_REFRESH_EVENTS.has(event)) {
+        // Diese Events KEINE neue Anfrage auslösen
+        if (event === "TOKEN_REFRESHED" || event === "INITIAL_SESSION") {
+          return;
+        }
         /**
          * Nicht synchron supabase.from() aufrufen — blockiert oft den Auth-Client.
          * Kurzer Defer + applyRole lädt Session + RPC get_my_role.
