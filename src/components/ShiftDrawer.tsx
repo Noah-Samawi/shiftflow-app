@@ -201,7 +201,7 @@ export default function ShiftDrawer({
       current <= end;
       current.setDate(current.getDate() + 1)
     ) {
-      result.push(current.toISOString().slice(0, 10));
+      result.push(toLocalDateString(current));
     }
     return result;
   };
@@ -888,10 +888,13 @@ export default function ShiftDrawer({
 }
 
 function formatToday(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
+  return toLocalDateString(new Date());
+}
+
+function toLocalDateString(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
 }
 

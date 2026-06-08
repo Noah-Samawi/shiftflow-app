@@ -508,20 +508,40 @@ export default function SchedulerCalendar() {
     occurrences: number;
     status: Schedule['status'];
   }) => {
-    const { error } = await supabase.rpc('create_schedules_with_recurrence', {
-      p_employee_id: input.employee_id,
-      p_customer_id: input.customer_id,
-      p_shift_date: input.shift_date,
-      p_start_time: input.start_time,
-      p_end_time: input.end_time,
-      p_tasks: input.tasks,
-      p_recurrence: input.recurrence,
-      p_status: input.status,
-      p_occurrences: input.occurrences,
-    });
+    // Bei Wiederholungen (weekly/biweekly etc.) → RPC
+    if (input.recurrence !== 'once') {
+      const { error } = await supabase.rpc('create_schedules_with_recurrence', {
+        p_employee_id: input.employee_id,
+        p_customer_id: input.customer_id,
+        p_shift_date: input.shift_date,
+        p_start_time: input.start_time,
+        p_end_time: input.end_time,
+        p_tasks: input.tasks,
+        p_recurrence: input.recurrence,
+        p_status: input.status,
+        p_occurrences: input.occurrences,
+      });
+      if (error) throw new Error(error.message);
+      toast.success('Serientermin gespeichert!');
+      await loadSchedules();
+      return;
+    }
 
+    // Einzeltermin → direkter Insert (schneller, kein RPC-Overhead)
+    const payload = {
+      employee_id: input.employee_id,
+      customer_id: input.customer_id,
+      shift_date: input.shift_date,
+      start_time: input.start_time,
+      end_time: input.end_time,
+      tasks: input.tasks,
+      instructions: input.tasks,
+      status: input.status,
+      recurrence: 'once' as const,
+    };
+    const { error } = await supabase.from('schedules').insert(payload);
     if (error) throw new Error(error.message);
-    toast.success("Schicht gespeichert!");
+    toast.success('Schicht gespeichert!');
     await loadSchedules();
   };
 
