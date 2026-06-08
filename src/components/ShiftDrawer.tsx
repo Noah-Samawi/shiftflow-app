@@ -784,6 +784,20 @@ export default function ShiftDrawer({
                   </p>
                 )}
 
+                {/* Admin: Löschen-Button im View-Modus */}
+                {isAdmin && onDelete && (
+                  <div className="drawer-delete-action">
+                    <button
+                      type="button"
+                      className="btn-danger-solid"
+                      onClick={() => setShowDeleteConfirm(true)}
+                      disabled={deleting}
+                    >
+                      Schicht löschen
+                    </button>
+                  </div>
+                )}
+
                 {/* Admin: Kommentar-Thread; Mitarbeiter: reines Lesedashboard ohne Chat */}
                 {isAdmin && (
                   <>
