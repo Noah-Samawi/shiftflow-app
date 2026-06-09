@@ -542,7 +542,7 @@ export default function ShiftDrawer({
                   Mitarbeiter{" "}
                   <span className="employee-chip-hint">(Mehrfachauswahl möglich)</span>
                 </label>
-                <div className="employee-chip-grid">
+                <div className="flex flex-wrap gap-2 mt-2">
                   {profiles
                     .filter((p) => p.role === "employee")
                     .map((profile) => {
@@ -568,22 +568,31 @@ export default function ShiftDrawer({
                                 : [...current, profile.id]
                             );
                           }}
-                          className={`employee-chip ${
-                            isDisabled ? "employee-chip--disabled" : ""
-                          } ${isSelected ? "employee-chip--selected" : ""}`}
+                          className={`
+                            inline-flex items-center gap-2
+                            px-3 py-1.5 rounded-full border text-sm
+                            transition-all duration-150 select-none
+                            ${isSelected
+                              ? "bg-blue-50 border-blue-300 text-blue-800"
+                              : "bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100"
+                            }
+                            ${isDisabled ? "opacity-50 cursor-not-allowed line-through" : "cursor-pointer"}
+                          `}
                         >
                           <span
-                            className={`employee-chip-avatar ${
-                              isSelected ? "employee-chip-avatar--selected" : ""
-                            }`}
+                            className={`
+                              w-6 h-6 rounded-full flex items-center justify-center
+                              text-[10px] font-bold text-white flex-shrink-0
+                              ${isSelected ? "bg-blue-500" : "bg-gray-400"}
+                            `}
                           >
                             {initials}
                           </span>
-                          <span className="employee-chip-name">
+                          <span className="leading-none">
                             {profile.full_name.split(" ")[0]}
                           </span>
                           {isDisabled && (
-                            <small className="employee-chip-status">belegt</small>
+                            <span className="text-[10px] text-gray-400 leading-none">belegt</span>
                           )}
                         </button>
                       );
@@ -697,7 +706,7 @@ export default function ShiftDrawer({
                 </>
               )}
 
-              <div className="drawer-form-actions">
+              <div className="sticky bottom-0 bg-white border-t border-gray-200 p-4 flex justify-between items-center w-full z-10 shadow-[0_-2px_8px_rgba(0,0,0,0.06)]">
                 {mode === "edit" && onDelete && (
                   <button
                     type="button"
@@ -708,7 +717,7 @@ export default function ShiftDrawer({
                     Löschen
                   </button>
                 )}
-                <div className="drawer-form-actions__right">
+                <div className="drawer-form-actions__right flex items-center gap-2">
                   <button type="button" className="btn-secondary" onClick={handleClose}>
                     Abbrechen
                   </button>
@@ -809,22 +818,12 @@ export default function ShiftDrawer({
                 {displaySchedule.recurrence && displaySchedule.recurrence !== "once" && (
                   <p className="drawer-recurrence-hint">
                     Serientermin:{" "}
-                    {displaySchedule.recurrence === "weekly" ? "Jede Woche" : "Alle 2 Wochen"}
+                    {displaySchedule.recurrence === "weekly"
+                      ? "Jede Woche"
+                      : displaySchedule.recurrence === "monthly"
+                        ? "Jeden Monat"
+                        : "Alle 2 Wochen"}
                   </p>
-                )}
-
-                {/* Admin: Löschen-Button im View-Modus */}
-                {isAdmin && onDelete && (
-                  <div className="drawer-delete-action">
-                    <button
-                      type="button"
-                      className="btn-danger-solid"
-                      onClick={() => setShowDeleteConfirm(true)}
-                      disabled={deleting}
-                    >
-                      Schicht löschen
-                    </button>
-                  </div>
                 )}
 
                 {/* Admin: Kommentar-Thread; Mitarbeiter: reines Lesedashboard ohne Chat */}
@@ -924,6 +923,36 @@ export default function ShiftDrawer({
               Senden
             </button>
           </form>
+        )}
+
+        {/* View-Mode Footer (sticky) */}
+        {mode === "view" && isAdmin && (
+          <div className="sticky bottom-0 bg-white border-t border-gray-200 p-4 flex justify-between items-center w-full z-10 shadow-[0_-2px_8px_rgba(0,0,0,0.06)]">
+            <button
+              type="button"
+              className="btn-danger-solid"
+              onClick={() => setShowDeleteConfirm(true)}
+              disabled={deleting}
+            >
+              Löschen
+            </button>
+            <div className="flex items-center gap-2">
+              <button type="button" className="btn-secondary" onClick={handleClose}>
+                Schließen
+              </button>
+              {onRequestEdit && (
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={() => {
+                    onRequestEdit();
+                  }}
+                >
+                  Bearbeiten
+                </button>
+              )}
+            </div>
+          </div>
         )}
       </aside>
     </>

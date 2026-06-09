@@ -2726,11 +2726,12 @@ body {
 .day-view__card {
   flex: 1;
   text-align: left;
-  padding: 14px 16px;
-  border-radius: var(--radius-lg);
-  border: 1px solid;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid transparent;
   cursor: pointer;
   transition: box-shadow 0.15s ease, transform 0.15s ease;
+  min-width: 0; /* no overflow */
 }
 
 .day-view__card:hover {
