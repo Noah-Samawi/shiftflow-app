@@ -1,8 +1,14 @@
 import { useState, useEffect, type FormEvent } from "react";
+import { supabase } from "../lib/supabaseClient";
 import { useProfiles } from "../hooks/useProfiles";
 import { useAuth } from "../hooks/useAuth";
 import WhatsAppButton from "../components/WhatsAppButton";
 import type { Profile } from "../types/database";
+
+interface WeeklyStats {
+  employee_id: string;
+  hours_this_week: number;
+}
 
 interface EmployeeFormData {
   full_name: string;
@@ -40,10 +46,31 @@ export default function EmployeesPage() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [weeklyStats, setWeeklyStats] = useState<Record<string, number>>({});
 
   useEffect(() => {
     void getProfiles();
   }, [getProfiles]);
+
+  useEffect(() => {
+    if (profiles.length === 0) return;
+
+    const loadHours = async () => {
+      const { data } = await supabase
+        .from("employee_weekly_hours")
+        .select("employee_id, hours_this_week");
+
+      if (data) {
+        const map: Record<string, number> = {};
+        data.forEach((row: WeeklyStats) => {
+          map[row.employee_id] = Number(row.hours_this_week);
+        });
+        setWeeklyStats(map);
+      }
+    };
+
+    void loadHours();
+  }, [profiles]);
 
   const openAdd = () => {
     setEditingProfile(null);
@@ -175,7 +202,31 @@ export default function EmployeesPage() {
                   </span>
                 </td>
                 <td>{p.address || "—"}</td>
-                <td>{p.weekly_hours}h</td>
+                <td>
+                  {(() => {
+                    const actual = weeklyStats[p.id] ?? 0;
+                    const max = p.weekly_hours ?? 40;
+                    const pct = Math.min(100, Math.round((actual / max) * 100));
+                    return (
+                      <div className="employee-hours-col">
+                        <span className={`employee-hours-value ${
+                          actual === 0 ? "text-gray-400" : actual >= max ? "text-red-600" : "text-green-700"
+                        }`}>
+                          {actual > 0 ? `${actual} Std.` : "— Std."}
+                        </span>
+                        <div className="employee-hours-bar">
+                          <div
+                            className={`employee-hours-fill ${
+                              pct >= 100 ? "hours-red" : pct >= 80 ? "hours-amber" : "hours-green"
+                            }`}
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                        <span className="employee-hours-max">von {max} Std.</span>
+                      </div>
+                    );
+                  })()}
+                </td>
                 <td>
                   <span className={`role-badge ${p.role === "admin" ? "role-badge--admin" : ""}`}>
                     {p.role === "admin" ? "Admin" : "Mitarbeiter"}

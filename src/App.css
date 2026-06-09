@@ -2801,3 +2801,131 @@ body {
   border-radius: var(--radius);
   border: 1px dashed var(--border);
 }
+
+/* ════════════════════════════════════════════════════════════════
+   Employee Chips in ShiftDrawer
+   ══════════════════════════════════════════════════════════════ */
+.employee-chip-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.employee-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 9999px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.employee-chip:not(:disabled):hover {
+  background: var(--bg-hover);
+}
+
+.employee-chip--selected {
+  background: #EFF6FF !important;
+  border-color: #93C5FD !important;
+  color: #1E40AF !important;
+}
+
+.employee-chip--disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  text-decoration: line-through;
+}
+
+.employee-chip-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  flex-shrink: 0;
+  background: #9CA3AF;
+  color: white;
+}
+
+.employee-chip-avatar--selected {
+  background: #2563EB;
+}
+
+.employee-chip-name {
+  line-height: 1;
+}
+
+.employee-chip-status {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  text-transform: lowercase;
+}
+
+.employee-chip-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 400;
+  font-style: italic;
+}
+
+.employee-chip-summary {
+  font-size: 0.75rem;
+  color: #2563EB;
+  margin-top: 4px;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   Employee Hours Bar in EmployeesPage
+   ══════════════════════════════════════════════════════════════ */
+.employee-hours-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.employee-hours-value {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.employee-hours-bar {
+  width: 64px;
+  height: 6px;
+  background: #F3F4F6;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.employee-hours-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.employee-hours-fill.hours-green {
+  background: #4ADE80;
+}
+
+.employee-hours-fill.hours-amber {
+  background: #FBBF24;
+}
+
+.employee-hours-fill.hours-red {
+  background: #F87171;
+}
+
+.employee-hours-max {
+  font-size: 0.65rem;
+  color: #9CA3AF;
+}

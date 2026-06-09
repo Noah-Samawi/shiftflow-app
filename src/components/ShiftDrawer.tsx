@@ -58,10 +58,9 @@ const STATUS_BG: Record<Schedule["status"], string> = {
 
 const RECURRENCE_OPTIONS: { value: ScheduleRecurrence; label: string }[] = [
   { value: "once", label: "Einmalig" },
-  { value: "daily_workdays", label: "Mo–Fr (Arbeitstage)" },
-  { value: "daily_all", label: "Mo–So (ganze Woche)" },
   { value: "weekly", label: "Wöchentlich" },
   { value: "biweekly", label: "Alle 2 Wochen" },
+  { value: "monthly", label: "Monatlich" },
 ];
 
 export default function ShiftDrawer({
@@ -111,10 +110,9 @@ export default function ShiftDrawer({
     if (mode !== "create") return;
     const defaults: Record<string, number> = {
       once: 1,
-      daily_workdays: 5,
-      daily_all: 7,
       weekly: 4,
       biweekly: 4,
+      monthly: 3,
     };
     setOccurrences(defaults[recurrence] ?? 1);
   }, [recurrence, mode]);
@@ -540,42 +538,71 @@ export default function ShiftDrawer({
               </div>
 
               <div className="form-group">
-                <label>Mitarbeiter *</label>
-                <div className="employee-checkbox-grid">
+                <label>
+                  Mitarbeiter{" "}
+                  <span className="employee-chip-hint">(Mehrfachauswahl möglich)</span>
+                </label>
+                <div className="employee-chip-grid">
                   {profiles
                     .filter((p) => p.role === "employee")
                     .map((profile) => {
                       const isDisabled = unavailableEmployeeIds.has(profile.id);
-                      const isChecked = selectedEmployeeIds.includes(profile.id);
+                      const isSelected = selectedEmployeeIds.includes(profile.id);
+                      const initials = profile.full_name
+                        .split(" ")
+                        .map((n) => n[0])
+                        .join("")
+                        .slice(0, 2)
+                        .toUpperCase();
 
                       return (
-                        <label
+                        <button
                           key={profile.id}
-                          className={`checkbox-card ${isDisabled ? "checkbox-card--disabled" : ""}`}
+                          type="button"
+                          disabled={saving || isDisabled}
+                          onClick={() => {
+                            if (isDisabled) return;
+                            setSelectedEmployeeIds((current) =>
+                              current.includes(profile.id)
+                                ? current.filter((id) => id !== profile.id)
+                                : [...current, profile.id]
+                            );
+                          }}
+                          className={`employee-chip ${
+                            isDisabled ? "employee-chip--disabled" : ""
+                          } ${isSelected ? "employee-chip--selected" : ""}`}
                         >
-                          <input
-                            type="checkbox"
-                            disabled={saving || isDisabled}
-                            checked={isChecked}
-                            onChange={() => {
-                              setSelectedEmployeeIds((current) => {
-                                if (current.includes(profile.id)) {
-                                  return current.filter((id) => id !== profile.id);
-                                }
-                                return [...current, profile.id];
-                              });
-                            }}
-                          />
-                          <span>{profile.full_name}</span>
+                          <span
+                            className={`employee-chip-avatar ${
+                              isSelected ? "employee-chip-avatar--selected" : ""
+                            }`}
+                          >
+                            {initials}
+                          </span>
+                          <span className="employee-chip-name">
+                            {profile.full_name.split(" ")[0]}
+                          </span>
                           {isDisabled && (
-                            <small className="text-xs text-gray-500">
-                              belegt
-                            </small>
+                            <small className="employee-chip-status">belegt</small>
                           )}
-                        </label>
+                        </button>
                       );
                     })}
+                  {profiles.filter((p) => p.role === "employee").length === 0 && (
+                    <p className="text-xs text-amber-600 mt-1">
+                      Keine Mitarbeiter vorhanden.
+                    </p>
+                  )}
                 </div>
+                {selectedEmployeeIds.length > 0 && (
+                  <p className="employee-chip-summary">
+                    {selectedEmployeeIds.length} ausgewählt
+                    {selectedEmployeeIds.length > 1
+                      ? ` → ${selectedEmployeeIds.length} Schichten`
+                      : ` → 1 Schicht`}{" "}
+                    werden erstellt
+                  </p>
+                )}
                 {loadingAvailability && (
                   <p className="text-sm text-gray-500 mt-2">
                     Verfügbare Mitarbeiter werden geprüft…
@@ -647,12 +674,12 @@ export default function ShiftDrawer({
                         id="drawer-occurrences"
                         type="number"
                         min={1}
-                        max={52}
+                        max={recurrence === "monthly" ? 24 : 52}
                         value={occurrences}
                         onChange={(e) =>
                           setOccurrences(
                             Math.min(
-                              52,
+                              recurrence === "monthly" ? 24 : 52,
                               Math.max(1, parseInt(e.target.value, 10) || 1)
                             )
                           )
@@ -660,8 +687,10 @@ export default function ShiftDrawer({
                         disabled={saving}
                       />
                       <p className="form-hint form-hint--inline">
-                        Serientermine werden per Datenbank-RPC für die nächsten
-                        Wochen angelegt (z. B. 12 = drei Monate wöchentlich).
+                        Serientermine werden per Datenbank-RPC angelegt
+                        {recurrence === "monthly"
+                          ? " (Monate)."
+                          : " (Wochen)."}
                       </p>
                     </div>
                   )}
@@ -696,7 +725,7 @@ export default function ShiftDrawer({
                   className="drawer-client-badge"
                   style={{ backgroundColor: customer?.color || "#E67E22" }}
                 >
-                  {customer?.name || "Unbekannter Kunde"}
+                  Kunde: {customer?.name || "Unbekannt"}
                 </div>
 
                 <div className="drawer-info-grid">
@@ -707,7 +736,7 @@ export default function ShiftDrawer({
                     <div>
                       <div className="drawer-info-label">Mitarbeiter</div>
                       <div className="drawer-info-value">
-                        {employee?.full_name || "Nicht zugewiesen"}
+                        {employee?.full_name || "Noch offen (Bitte zuweisen)"}
                       </div>
                     </div>
                   </div>

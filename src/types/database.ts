@@ -26,7 +26,7 @@ export interface Customer {
 /** @deprecated Alias für Migration – bitte Customer verwenden */
 export type Client = Customer;
 
-export type ScheduleRecurrence = "once" | "daily_workdays" | "daily_all" | "weekly" | "biweekly";
+export type ScheduleRecurrence = "once" | "weekly" | "biweekly" | "monthly";
 
 export interface Schedule {
   id: string;

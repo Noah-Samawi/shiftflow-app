@@ -40,12 +40,22 @@ const STATUS_COLORS: Record<string, string> = {
   cancelled:  'bg-red-100   text-red-600   border-red-200  line-through',
 };
 
+/** Wenn kein Mitarbeiter zugewiesen → Warnfarbe (Orange), sonst Statusfarbe */
+function getShiftCardClass(s: Schedule): string {
+  const hasEmployee = Boolean(
+    s.employee_id && s.profiles?.full_name
+  );
+  if (!hasEmployee) {
+    return 'bg-orange-50 border-orange-300 text-orange-900';
+  }
+  return STATUS_COLORS[s.status] ?? STATUS_COLORS.scheduled;
+}
+
 const recurrenceLabel: Record<string, string> = {
   once: 'Einmalig',
-  daily_workdays: 'Mo–Fr',
-  daily_all: 'Mo–So',
   weekly: 'Wöchentlich',
   biweekly: '2-wöchig',
+  monthly: 'Monatlich',
 };
 
 /** Supabase-Join: verschachtelte profiles/customers normalisieren */
@@ -273,7 +283,7 @@ function DayViewList({
         <ul className="day-view__list">
           {schedules.map((s) => {
             const customer = s.customers ?? s.clients;
-            const colorClass = STATUS_COLORS[s.status] ?? STATUS_COLORS.scheduled;
+            const colorClass = getShiftCardClass(s);
             return (
               <li key={s.id} className="day-view__item">
                 <button
