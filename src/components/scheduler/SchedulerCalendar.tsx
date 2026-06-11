@@ -20,6 +20,7 @@ import {
 } from '../../utils/germanHolidays';
 import ShiftDrawer, { type ShiftDrawerMode } from '../ShiftDrawer';
 import ShiftWhatsAppReportButton from './ShiftWhatsAppReportButton';
+import { getCurrentOrgId } from '../../hooks/useOrgId';
 import { isWeekend } from '../../utils/calendarHelpers';
 import type { Schedule, ScheduleRecurrence } from '../../types/database';
 
@@ -396,12 +397,20 @@ export default function SchedulerCalendar() {
    * - Admin mit Sidebar-Auswahl: nur gewählter Mitarbeiter
    */
   const loadSchedules = useCallback(async () => {
+    const orgId = await getCurrentOrgId();
+    if (!orgId) {
+      setLoading(false);
+      setSchedules([]);
+      return;
+    }
+
     const gen = ++fetchGeneration.current;
     setLoading(true);
     try {
       let query = supabase
         .from('schedules')
         .select(SCHEDULE_SELECT)
+        .eq('org_id', orgId)
         .gte('shift_date', format(rangeStart, 'yyyy-MM-dd'))
         .lte('shift_date', format(rangeEnd, 'yyyy-MM-dd'))
         .order('start_time', { ascending: true });
@@ -519,6 +528,11 @@ export default function SchedulerCalendar() {
     occurrences: number;
     status: Schedule['status'];
   }) => {
+    const orgId = await getCurrentOrgId();
+    if (!orgId) {
+      throw new Error('Keine Organisation gefunden.');
+    }
+
     // Bei Wiederholungen (weekly/biweekly etc.) → RPC
     if (input.recurrence !== 'once') {
       const { error } = await supabase.rpc('create_schedules_with_recurrence', {
@@ -531,6 +545,7 @@ export default function SchedulerCalendar() {
         p_recurrence: input.recurrence,
         p_status: input.status,
         p_occurrences: input.occurrences,
+        p_org_id: orgId,
       });
       if (error) throw new Error(error.message);
       toast.success('Serientermin gespeichert!');
@@ -549,6 +564,7 @@ export default function SchedulerCalendar() {
       instructions: input.tasks,
       status: input.status,
       recurrence: 'once' as const,
+      org_id: orgId,
     };
     const { error } = await supabase.from('schedules').insert(payload);
     if (error) throw new Error(error.message);
@@ -562,18 +578,28 @@ export default function SchedulerCalendar() {
       Omit<Schedule, 'id' | 'created_at' | 'profiles' | 'customers' | 'clients'>
     >
   ) => {
+    const orgId = await getCurrentOrgId();
+    if (!orgId) {
+      throw new Error('Keine Organisation gefunden.');
+    }
+
     const payload = {
       ...data,
       ...(data.tasks !== undefined ? { instructions: data.tasks } : {}),
     };
-    const { error } = await supabase.from('schedules').update(payload).eq('id', id);
+    const { error } = await supabase.from('schedules').update(payload).eq('id', id).eq('org_id', orgId);
     if (error) throw new Error(error.message);
     toast.success("Schicht aktualisiert!");
     await loadSchedules();
   };
 
   const handleDeleteShift = async (id: string) => {
-    const { error } = await supabase.from('schedules').delete().eq('id', id);
+    const orgId = await getCurrentOrgId();
+    if (!orgId) {
+      throw new Error('Keine Organisation gefunden.');
+    }
+
+    const { error } = await supabase.from('schedules').delete().eq('id', id).eq('org_id', orgId);
     if (error) throw new Error(error.message);
     toast.success("Schicht gelöscht.");
     await loadSchedules();
