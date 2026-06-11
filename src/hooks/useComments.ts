@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabaseClient";
+import { getCurrentOrgId } from "./useOrgId";
 import type { Comment } from "../types/database";
 
 interface UseCommentsReturn {
@@ -18,6 +19,13 @@ export function useComments(): UseCommentsReturn {
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   const getComments = useCallback(async (scheduleId: string) => {
+    const orgId = await getCurrentOrgId();
+    if (!orgId) {
+      setError("Keine Organisation gefunden.");
+      setComments([]);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     setActiveScheduleId(scheduleId);
@@ -26,6 +34,7 @@ export function useComments(): UseCommentsReturn {
       .from("comments")
       .select("*, profiles(id, full_name, avatar_url)")
       .eq("schedule_id", scheduleId)
+      .eq("org_id", orgId)
       .order("created_at", { ascending: true });
 
     if (err) {
@@ -38,6 +47,11 @@ export function useComments(): UseCommentsReturn {
 
   const addComment = useCallback(
     async (scheduleId: string, message: string) => {
+      const orgId = await getCurrentOrgId();
+      if (!orgId) {
+        throw new Error("Keine Organisation gefunden.");
+      }
+
       setLoading(true);
       setError(null);
 
@@ -49,13 +63,12 @@ export function useComments(): UseCommentsReturn {
         schedule_id: scheduleId,
         user_id: user?.id,
         message,
+        org_id: orgId,
       });
 
       if (err) {
         setError(err.message);
       } else {
-        // Optimistically refresh the list so the user sees their comment immediately
-        // (Realtime will also fire, but this ensures instant feedback)
         await getComments(scheduleId);
       }
       setLoading(false);
@@ -67,7 +80,6 @@ export function useComments(): UseCommentsReturn {
   useEffect(() => {
     if (!activeScheduleId) return;
 
-    // Clean up any existing channel before creating a new one
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current);
       channelRef.current = null;
@@ -87,7 +99,6 @@ export function useComments(): UseCommentsReturn {
         },
         (payload) => {
           const newComment = payload.new as Comment;
-          // Fetch the full row with profile join for the new comment
           supabase
             .from("comments")
             .select("*, profiles(id, full_name, avatar_url)")
@@ -96,7 +107,6 @@ export function useComments(): UseCommentsReturn {
             .then(({ data }) => {
               if (data) {
                 setComments((prev) => {
-                  // Avoid duplicates (in case getComments already added it)
                   if (prev.some((c) => c.id === data.id)) return prev;
                   return [...prev, data as Comment];
                 });
@@ -114,7 +124,7 @@ export function useComments(): UseCommentsReturn {
         channelRef.current = null;
       }
     };
-  }, [activeScheduleId]); // re-subscribe when the active schedule changes
+  }, [activeScheduleId]);
 
   return { comments, loading, error, getComments, addComment };
 }

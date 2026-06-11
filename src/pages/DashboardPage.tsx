@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../hooks/useAuth";
 import { supabase } from "../lib/supabaseClient";
+import { getCurrentOrgId } from "../hooks/useOrgId";
 import { format, addDays, startOfWeek, endOfWeek } from "date-fns";
 import { de } from "date-fns/locale";
 import type { Profile } from "../types/database";
@@ -45,6 +46,12 @@ export default function DashboardPage() {
   const todayStr = format(new Date(), "yyyy-MM-dd");
 
   const loadDashboard = useCallback(async () => {
+    const orgId = await getCurrentOrgId();
+    if (!orgId) {
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
       const today = format(new Date(), "yyyy-MM-dd");
@@ -56,6 +63,7 @@ export default function DashboardPage() {
       const { count: thisWeekCount } = await supabase
         .from("schedules")
         .select("*", { count: "exact", head: true })
+        .eq("org_id", orgId)
         .gte("shift_date", weekStart)
         .lte("shift_date", weekEnd);
 
@@ -63,6 +71,7 @@ export default function DashboardPage() {
       const { count: openCount } = await supabase
         .from("schedules")
         .select("*", { count: "exact", head: true })
+        .eq("org_id", orgId)
         .is("employee_id", null)
         .neq("status", "cancelled");
 
@@ -70,12 +79,14 @@ export default function DashboardPage() {
       const { count: confirmedCount } = await supabase
         .from("schedules")
         .select("*", { count: "exact", head: true })
+        .eq("org_id", orgId)
         .eq("status", "confirmed");
 
       // Aktive Mitarbeiter
       const { count: employeeCount } = await supabase
         .from("profiles")
         .select("*", { count: "exact", head: true })
+        .eq("org_id", orgId)
         .eq("role", "employee");
 
       setMetrics({
@@ -93,6 +104,7 @@ export default function DashboardPage() {
           profiles ( full_name ),
           customers ( name, color )
         `)
+        .eq("org_id", orgId)
         .gte("shift_date", today)
         .lte("shift_date", future)
         .neq("status", "cancelled")

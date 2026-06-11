@@ -43,7 +43,7 @@ ALTER TABLE public.schedules
 CREATE INDEX IF NOT EXISTS idx_schedules_org_id ON public.schedules(org_id);
 
 -- ══════════════════════════════════════════════════════════════════
--- 3. RLS: ORG ISOLATION POLICIES (NEW — do NOT drop existing)
+-- 3. RLS: STRICT ORG ISOLATION (NO org_id IS NULL fallback)
 -- ══════════════════════════════════════════════════════════════════
 
 -- Enable RLS on organizations
@@ -58,44 +58,37 @@ CREATE POLICY "org_members_read"
     OR id IN (SELECT org_id FROM public.profiles WHERE id = auth.uid())
   );
 
--- Profiles org isolation (supplements existing policies)
+-- Profiles: STRICT org isolation — user can only see profiles in same org
 DROP POLICY IF EXISTS "org_isolation_profiles" ON public.profiles;
 CREATE POLICY "org_isolation_profiles"
   ON public.profiles FOR ALL TO authenticated
   USING (
-    org_id IS NULL
-    OR org_id = (SELECT org_id FROM public.profiles WHERE id = auth.uid())
-    OR auth.uid() = id
+    org_id = (SELECT org_id FROM public.profiles WHERE id = auth.uid())
   )
   WITH CHECK (
-    org_id IS NULL
-    OR org_id = (SELECT org_id FROM public.profiles WHERE id = auth.uid())
+    org_id = (SELECT org_id FROM public.profiles WHERE id = auth.uid())
   );
 
--- Customers org isolation
+-- Customers: STRICT org isolation
 DROP POLICY IF EXISTS "org_isolation_customers" ON public.customers;
 CREATE POLICY "org_isolation_customers"
   ON public.customers FOR ALL TO authenticated
   USING (
-    org_id IS NULL
-    OR org_id = (SELECT org_id FROM public.profiles WHERE id = auth.uid())
+    org_id = (SELECT org_id FROM public.profiles WHERE id = auth.uid())
   )
   WITH CHECK (
-    org_id IS NULL
-    OR org_id = (SELECT org_id FROM public.profiles WHERE id = auth.uid())
+    org_id = (SELECT org_id FROM public.profiles WHERE id = auth.uid())
   );
 
--- Schedules org isolation
+-- Schedules: STRICT org isolation
 DROP POLICY IF EXISTS "org_isolation_schedules" ON public.schedules;
 CREATE POLICY "org_isolation_schedules"
   ON public.schedules FOR ALL TO authenticated
   USING (
-    org_id IS NULL
-    OR org_id = (SELECT org_id FROM public.profiles WHERE id = auth.uid())
+    org_id = (SELECT org_id FROM public.profiles WHERE id = auth.uid())
   )
   WITH CHECK (
-    org_id IS NULL
-    OR org_id = (SELECT org_id FROM public.profiles WHERE id = auth.uid())
+    org_id = (SELECT org_id FROM public.profiles WHERE id = auth.uid())
   );
 
 -- ══════════════════════════════════════════════════════════════════

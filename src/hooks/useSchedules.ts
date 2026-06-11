@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabaseClient";
+import { getCurrentOrgId } from "./useOrgId";
 import type { Schedule, ScheduleRecurrence } from "../types/database";
 import { startOfWeek, endOfWeek, format, addDays } from "date-fns";
 
@@ -81,6 +82,14 @@ export function useSchedules(): UseSchedulesReturn {
   const fetchGeneration = useRef(0);
 
   const getWeekSchedules = useCallback(async (weekStart: Date) => {
+    const orgId = await getCurrentOrgId();
+    if (!orgId) {
+      setError("Keine Organisation gefunden.");
+      setSchedules([]);
+      setLoading(false);
+      return;
+    }
+
     const gen = ++fetchGeneration.current;
     setLoading(true);
     setError(null);
@@ -90,6 +99,7 @@ export function useSchedules(): UseSchedulesReturn {
     const { data, error: err } = await supabase
       .from("schedules")
       .select(SCHEDULE_SELECT)
+      .eq("org_id", orgId)
       .gte("shift_date", start)
       .lte("shift_date", end)
       .order("shift_date")
@@ -110,10 +120,16 @@ export function useSchedules(): UseSchedulesReturn {
     async (
       data: Omit<Schedule, "id" | "created_at" | "profiles" | "customers" | "clients" | "series_id">
     ) => {
+      const orgId = await getCurrentOrgId();
+      if (!orgId) {
+        throw new Error("Keine Organisation gefunden.");
+      }
+
       setLoading(true);
       setError(null);
       const payload = {
         ...data,
+        org_id: orgId,
         instructions: data.tasks,
         recurrence: data.recurrence ?? "once",
       };
@@ -143,6 +159,11 @@ export function useSchedules(): UseSchedulesReturn {
       status?: Schedule["status"];
       occurrences?: number;
     }) => {
+      const orgId = await getCurrentOrgId();
+      if (!orgId) {
+        throw new Error("Keine Organisation gefunden.");
+      }
+
       setLoading(true);
       setError(null);
 
@@ -156,6 +177,7 @@ export function useSchedules(): UseSchedulesReturn {
         p_recurrence: input.recurrence,
         p_status: input.status ?? "scheduled",
         p_occurrences: input.occurrences ?? 12,
+        p_org_id: orgId,
       });
 
       if (err) {
@@ -179,6 +201,11 @@ export function useSchedules(): UseSchedulesReturn {
         Omit<Schedule, "id" | "created_at" | "profiles" | "customers" | "clients">
       >
     ) => {
+      const orgId = await getCurrentOrgId();
+      if (!orgId) {
+        throw new Error("Keine Organisation gefunden.");
+      }
+
       setLoading(true);
       setError(null);
       const payload = {
@@ -190,7 +217,8 @@ export function useSchedules(): UseSchedulesReturn {
       const { error: err } = await supabase
         .from("schedules")
         .update(payload)
-        .eq("id", id);
+        .eq("id", id)
+        .eq("org_id", orgId);
       if (err) {
         setError(err.message);
         throw new Error(err.message);
@@ -204,9 +232,18 @@ export function useSchedules(): UseSchedulesReturn {
   );
 
   const deleteSchedule = useCallback(async (id: string) => {
+    const orgId = await getCurrentOrgId();
+    if (!orgId) {
+      throw new Error("Keine Organisation gefunden.");
+    }
+
     setLoading(true);
     setError(null);
-    const { error: err } = await supabase.from("schedules").delete().eq("id", id);
+    const { error: err } = await supabase
+      .from("schedules")
+      .delete()
+      .eq("id", id)
+      .eq("org_id", orgId);
     if (err) {
       setError(err.message);
       throw new Error(err.message);

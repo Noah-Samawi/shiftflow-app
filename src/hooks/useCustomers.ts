@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { supabase } from "../lib/supabaseClient";
+import { getCurrentOrgId } from "./useOrgId";
 import type { Customer } from "../types/database";
 
 interface UseCustomersReturn {
@@ -14,6 +15,7 @@ interface UseCustomersReturn {
 /**
  * Kundenverwaltung (public.customers).
  * Nur Admins dürfen laut RLS schreiben; alle Authentifizierten können lesen.
+ * ALLE Queries filtern strikt nach org_id.
  */
 export function useCustomers(): UseCustomersReturn {
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -21,11 +23,19 @@ export function useCustomers(): UseCustomersReturn {
   const [error, setError] = useState<string | null>(null);
 
   const getCustomers = useCallback(async () => {
+    const orgId = await getCurrentOrgId();
+    if (!orgId) {
+      setError("Keine Organisation gefunden.");
+      setCustomers([]);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     const { data, error: err } = await supabase
       .from("customers")
       .select("*")
+      .eq("org_id", orgId)
       .order("name");
 
     if (err) {
@@ -38,6 +48,11 @@ export function useCustomers(): UseCustomersReturn {
 
   const upsertCustomer = useCallback(
     async (data: Partial<Omit<Customer, "created_at">>) => {
+      const orgId = await getCurrentOrgId();
+      if (!orgId) {
+        throw new Error("Keine Organisation gefunden.");
+      }
+
       setLoading(true);
       setError(null);
 
@@ -48,11 +63,13 @@ export function useCustomers(): UseCustomersReturn {
         const { error } = await supabase
           .from("customers")
           .update(restData)
-          .eq("id", id);
+          .eq("id", id)
+          .eq("org_id", orgId);
         err = error;
       } else {
         const { error } = await supabase.from("customers").insert({
           color: "#E67E22",
+          org_id: orgId,
           ...restData,
         });
         err = error;
@@ -70,12 +87,18 @@ export function useCustomers(): UseCustomersReturn {
 
   const deleteCustomer = useCallback(
     async (id: string) => {
+      const orgId = await getCurrentOrgId();
+      if (!orgId) {
+        throw new Error("Keine Organisation gefunden.");
+      }
+
       setLoading(true);
       setError(null);
       const { error: err } = await supabase
         .from("customers")
         .delete()
-        .eq("id", id);
+        .eq("id", id)
+        .eq("org_id", orgId);
 
       if (err) {
         setError(err.message);

@@ -1,6 +1,7 @@
 import { useState, useEffect, type FormEvent } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
+import { invalidateOrgCache } from "../hooks/useOrgId";
 
 const MAX_ATTEMPTS = 3;
 const LOCKOUT_MINUTES = 15;
@@ -71,6 +72,8 @@ export default function LoginPage() {
   // Redirect if already logged in
   useEffect(() => {
     if (!authLoading && user) {
+      // Clear org cache on login so fresh org_id is loaded
+      invalidateOrgCache();
       navigate("/dashboard", { replace: true });
     }
   }, [user, authLoading]);

@@ -3,6 +3,7 @@ import { supabase } from "../lib/supabaseClient";
 import { useProfiles } from "../hooks/useProfiles";
 import { useAuth } from "../hooks/useAuth";
 import { usePagination } from "../hooks/usePagination";
+import { getCurrentOrgId } from "../hooks/useOrgId";
 import WhatsAppButton from "../components/WhatsAppButton";
 import PrintButton from "../components/PrintButton";
 import TablePagination from "../components/TablePagination";
@@ -34,7 +35,7 @@ const emptyForm: EmployeeFormData = {
 };
 
 export default function EmployeesPage() {
-  const { isAdmin, user } = useAuth();
+  const { isAdmin } = useAuth();
   const {
     profiles,
     loading,
@@ -95,20 +96,19 @@ export default function EmployeesPage() {
   // Load current user's org
   useEffect(() => {
     async function loadOrg() {
-      if (!user?.id) return;
-      const { data } = await supabase
-        .from("profiles")
-        .select("org_id, organizations(name)")
-        .eq("id", user.id)
-        .single();
-      if (data?.org_id) {
-        setOrgId(data.org_id as string);
-        const org = (data.organizations as unknown as { name: string } | null)?.name ?? "";
-        setOrgName(org);
+      const orgId = await getCurrentOrgId();
+      if (orgId) {
+        setOrgId(orgId);
+        const { data } = await supabase
+          .from("organizations")
+          .select("name")
+          .eq("id", orgId)
+          .single();
+        if (data) setOrgName(data.name);
       }
     }
     void loadOrg();
-  }, [user?.id]);
+  }, []);
 
   const openAdd = () => {
     setEditingProfile(null);

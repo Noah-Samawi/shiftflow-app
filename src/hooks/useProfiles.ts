@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { supabase } from "../lib/supabaseClient";
+import { getCurrentOrgId } from "./useOrgId";
 import type { Profile } from "../types/database";
 
 interface CreateEmployeeInput {
@@ -31,11 +32,19 @@ export function useProfiles(): UseProfilesReturn {
   const [error, setError] = useState<string | null>(null);
 
   const getProfiles = useCallback(async () => {
+    const orgId = await getCurrentOrgId();
+    if (!orgId) {
+      setError("Keine Organisation gefunden.");
+      setProfiles([]);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     const { data, error: err } = await supabase
       .from("profiles")
       .select("*")
+      .eq("org_id", orgId)
       .order("full_name");
 
     if (err) {
@@ -48,6 +57,11 @@ export function useProfiles(): UseProfilesReturn {
 
   const createEmployeeByEmail = useCallback(
     async (input: CreateEmployeeInput) => {
+      const orgId = await getCurrentOrgId();
+      if (!orgId) {
+        throw new Error("Keine Organisation gefunden.");
+      }
+
       setLoading(true);
       setError(null);
 
@@ -57,6 +71,7 @@ export function useProfiles(): UseProfilesReturn {
         p_phone: input.phone ?? null,
         p_address: input.address ?? null,
         p_weekly_hours: input.weekly_hours ?? 40,
+        p_org_id: orgId,
       });
 
       if (err) {
@@ -74,9 +89,17 @@ export function useProfiles(): UseProfilesReturn {
 
   const insertProfile = useCallback(
     async (data: Omit<Profile, "id" | "created_at">) => {
+      const orgId = await getCurrentOrgId();
+      if (!orgId) {
+        throw new Error("Keine Organisation gefunden.");
+      }
+
       setLoading(true);
       setError(null);
-      const { error: err } = await supabase.from("profiles").insert(data);
+      const { error: err } = await supabase.from("profiles").insert({
+        ...data,
+        org_id: orgId,
+      });
       if (err) {
         setError(err.message);
       } else {
@@ -92,12 +115,18 @@ export function useProfiles(): UseProfilesReturn {
       id: string,
       data: Partial<Omit<Profile, "id" | "created_at">>
     ) => {
+      const orgId = await getCurrentOrgId();
+      if (!orgId) {
+        throw new Error("Keine Organisation gefunden.");
+      }
+
       setLoading(true);
       setError(null);
       const { error: err } = await supabase
         .from("profiles")
         .update(data)
-        .eq("id", id);
+        .eq("id", id)
+        .eq("org_id", orgId);
 
       if (err) {
         setError(err.message);
@@ -111,12 +140,18 @@ export function useProfiles(): UseProfilesReturn {
 
   const deleteProfile = useCallback(
     async (id: string) => {
+      const orgId = await getCurrentOrgId();
+      if (!orgId) {
+        throw new Error("Keine Organisation gefunden.");
+      }
+
       setLoading(true);
       setError(null);
       const { error: err } = await supabase
         .from("profiles")
         .delete()
-        .eq("id", id);
+        .eq("id", id)
+        .eq("org_id", orgId);
 
       if (err) {
         setError(err.message);
