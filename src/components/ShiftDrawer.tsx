@@ -560,6 +560,7 @@ export default function ShiftDrawer({
                   type="button"
                   id="drawer-employees"
                   className="employee-multiselect-trigger"
+                  style={{ color: '#1e293b' }}
                   onClick={() => setEmployeeDropdownOpen((v) => !v)}
                   disabled={saving}
                 >
@@ -574,7 +575,7 @@ export default function ShiftDrawer({
                 </button>
               
                 {employeeDropdownOpen && (
-                  <div className="employee-multiselect-dropdown">
+                  <div className="employee-multiselect-dropdown" style={{ backgroundColor: '#ffffff', color: '#000000' }}>
                     {profiles
                       .filter((p) => p.role === 'employee')
                       .map((profile) => {
@@ -584,6 +585,7 @@ export default function ShiftDrawer({
                           <label
                             key={profile.id}
                             className={`employee-multiselect-option${isSelected ? ' employee-multiselect-option--selected' : ''}${isDisabled ? ' employee-multiselect-option--disabled' : ''}`}
+                            style={{ color: '#000000', backgroundColor: isSelected ? '#eff6ff' : '#ffffff' }}
                           >
                             <input
                               type="checkbox"
@@ -598,7 +600,7 @@ export default function ShiftDrawer({
                               }}
                               className="employee-multiselect-checkbox"
                             />
-                            <span className="employee-multiselect-name">
+                            <span className="employee-multiselect-name" style={{ color: '#000000' }}>
                               {profile.full_name}
                             </span>
                             {isDisabled && (
