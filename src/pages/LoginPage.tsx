@@ -3,8 +3,10 @@ import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { invalidateOrgCache } from "../hooks/useOrgId";
 
-const MAX_ATTEMPTS = 3;
+const MAX_ATTEMPTS = 5;
 const LOCKOUT_MINUTES = 15;
+// Attempts older than this window are ignored (counter resets automatically)
+const ATTEMPT_WINDOW_MS = 30 * 60 * 1000; // 30 minutes
 const RATE_LIMIT_KEY = "login_attempts";
 const LOCKOUT_KEY = "login_lockout_until";
 
@@ -16,7 +18,15 @@ interface RateLimit {
 function getRateLimit(): RateLimit {
   try {
     const raw = localStorage.getItem(RATE_LIMIT_KEY);
-    if (raw) return JSON.parse(raw) as RateLimit;
+    if (raw) {
+      const parsed = JSON.parse(raw) as RateLimit;
+      // Reset counter if last attempt was outside the rolling window
+      if (Date.now() - parsed.lastAttempt > ATTEMPT_WINDOW_MS) {
+        localStorage.removeItem(RATE_LIMIT_KEY);
+        return { attempts: 0, lastAttempt: 0 };
+      }
+      return parsed;
+    }
   } catch { /* ignore */ }
   return { attempts: 0, lastAttempt: 0 };
 }
@@ -50,6 +60,16 @@ export default function LoginPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [lockoutRemaining, setLockoutRemaining] = useState(0);
+
+  // On mount: clear any stale lockout/attempts that were stored before the
+  // 30-minute rolling window was introduced (one-time migration).
+  useEffect(() => {
+    // If there's a lockout but the attempt counter is now expired, wipe both.
+    const limit = getRateLimit(); // already handles window expiry internally
+    if (limit.attempts === 0) {
+      clearRateLimit();
+    }
+  }, []);
 
   // Check lockout timer
   useEffect(() => {
