@@ -3066,12 +3066,11 @@ body {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   font-size: 0.875rem;
-  color: #1e293b !important;
-  background: #ffffff;
+  color: var(--text);
+  background: var(--surface);
   cursor: pointer;
   text-align: left;
   transition: border-color var(--transition), box-shadow var(--transition);
-  color-scheme: light only;
 }
 
 .employee-multiselect-trigger:hover {
@@ -3104,13 +3103,12 @@ body {
   z-index: 50;
   margin-top: 4px;
   padding: 4px;
-  background: #ffffff;
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow-md);
   max-height: 200px;
   overflow-y: auto;
-  color-scheme: light only;
 }
 
 /* Ensure the form-group containing the multiselect is positioned for dropdown */
@@ -3126,18 +3124,18 @@ body {
   border-radius: 6px;
   cursor: pointer;
   font-size: 0.85rem;
-  color: #1e293b !important;
-  background: #ffffff;
+  color: var(--text);
+  background: var(--surface);
   transition: background 0.1s ease;
 }
 
 .employee-multiselect-option:hover {
-  background: #f1f5f9;
+  background: var(--bg);
 }
 
 .employee-multiselect-option--selected {
-  background: #eff6ff;
-  color: #1e40af !important;
+  background: var(--primary-light);
+  color: var(--primary-hover);
 }
 
 .employee-multiselect-option--disabled {
@@ -3162,7 +3160,6 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: #000000 !important;
 }
 
 .employee-multiselect-unavailable {
