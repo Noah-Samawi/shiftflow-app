@@ -12,6 +12,7 @@ import { supabase } from "../lib/supabaseClient";
 import type { Profile } from "../types/database";
 import { toGermanAuthError } from "../utils/authErrors";
 import { fetchUserRole, resolveRole } from "../lib/fetchUserRole";
+import { invalidateOrgCache } from "../hooks/useOrgId";
 
 // Debug Logging (nur in DEV, wird in Produktion ausgefiltert durch tree-shaking)
 const addLog = import.meta.env.DEV ? console.log : () => {};
@@ -137,6 +138,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = useCallback(
     async (email: string, password: string) => {
+      // Invalidate org cache so new session gets a fresh org_id lookup
+      invalidateOrgCache();
       const { data, error } = await supabase.auth.signInWithPassword({
         email: email.trim().toLowerCase(),
         password,
@@ -197,6 +200,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { error } = await supabase.auth.signOut();
     if (error) throw toGermanAuthError(error as AuthError);
     roleFetchId.current += 1;
+    // Flush the org cache so the next login re-fetches the correct org_id
+    invalidateOrgCache();
     setUser(null);
     setRole(null);
     setRoleLoading(false);
