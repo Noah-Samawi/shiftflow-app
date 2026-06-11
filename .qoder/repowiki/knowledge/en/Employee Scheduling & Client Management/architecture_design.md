@@ -1,0 +1,5 @@
+- Entry point: `src/main.tsx` renders `<App />` under `StrictMode`.
+- Data layer: a single shared Supabase client in `src/lib/supabaseClient.ts` reads `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` from `.env`, throwing on missing vars.
+- Domain types: `src/types/database.ts` defines TypeScript interfaces (`Profile`, `Client`, `Schedule`, `Comment`) mirroring Supabase tables with optional joined fields.
+- Custom hooks: `src/hooks/` exports domain-specific hooks (`useAuth`, `useClients`, `useSchedules`, `useComments`, `useProfiles`) that encapsulate all Supabase queries/mutations and expose `{ data, loading, error, actions }` return shapes.
+- Build config: Vite with `@vitejs/plugin-react`; TypeScript uses project references (`tsconfig.app.json`, `tsconfig.node.json`). ESLint configured via `eslint.config.js` with `typescript-eslint` and React plugins.
