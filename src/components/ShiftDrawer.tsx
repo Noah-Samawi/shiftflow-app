@@ -588,6 +588,7 @@ export default function ShiftDrawer({
                             <input
                               type="checkbox"
                               checked={isSelected}
+                              aria-checked={isSelected}
                               disabled={saving || isDisabled}
                               onChange={() => {
                                 setSelectedEmployeeIds((current) =>
