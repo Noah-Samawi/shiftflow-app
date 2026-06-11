@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../hooks/useAuth";
 import { supabase } from "../lib/supabaseClient";
-import { format, addDays } from "date-fns";
+import { format, addDays, startOfWeek, endOfWeek } from "date-fns";
 import { de } from "date-fns/locale";
 import type { Profile } from "../types/database";
 
@@ -34,7 +34,7 @@ export default function DashboardPage() {
   const { role } = useAuth();
 
   const [metrics, setMetrics] = useState({
-    todayCount: 0,
+    thisWeekCount: 0,
     openCount: 0,
     confirmedCount: 0,
     employeeCount: 0,
@@ -48,19 +48,23 @@ export default function DashboardPage() {
     setLoading(true);
     try {
       const today = format(new Date(), "yyyy-MM-dd");
+      const weekStart = format(startOfWeek(new Date(), { weekStartsOn: 1 }), "yyyy-MM-dd");
+      const weekEnd = format(endOfWeek(new Date(), { weekStartsOn: 1 }), "yyyy-MM-dd");
       const future = format(addDays(new Date(), 7), "yyyy-MM-dd");
 
-      // Heutige Schichten
-      const { count: todayCount } = await supabase
+      // Schichten diese Woche
+      const { count: thisWeekCount } = await supabase
         .from("schedules")
         .select("*", { count: "exact", head: true })
-        .eq("shift_date", today);
+        .gte("shift_date", weekStart)
+        .lte("shift_date", weekEnd);
 
-      // Offene Schichten
+      // Offene Schichten (kein Mitarbeiter zugewiesen)
       const { count: openCount } = await supabase
         .from("schedules")
         .select("*", { count: "exact", head: true })
-        .eq("status", "scheduled");
+        .is("employee_id", null)
+        .neq("status", "cancelled");
 
       // Bestätigte Schichten
       const { count: confirmedCount } = await supabase
@@ -75,13 +79,13 @@ export default function DashboardPage() {
         .eq("role", "employee");
 
       setMetrics({
-        todayCount: todayCount ?? 0,
+        thisWeekCount: thisWeekCount ?? 0,
         openCount: openCount ?? 0,
         confirmedCount: confirmedCount ?? 0,
         employeeCount: employeeCount ?? 0,
       });
 
-      // Nächste 7 Tage
+      // Nächste 5 Schichten (Timeline)
       const { data: nextData } = await supabase
         .from("schedules")
         .select(`
@@ -91,8 +95,10 @@ export default function DashboardPage() {
         `)
         .gte("shift_date", today)
         .lte("shift_date", future)
+        .neq("status", "cancelled")
         .order("shift_date", { ascending: true })
-        .order("start_time", { ascending: true });
+        .order("start_time", { ascending: true })
+        .limit(5);
 
       const mapped = (nextData ?? []).map((row: Record<string, unknown>) => {
         const profiles = Array.isArray(row.profiles)
@@ -137,7 +143,7 @@ export default function DashboardPage() {
       </div>
 
       <div className="dashboard-grid">
-        {/* Heutige Schichten */}
+        {/* Schichten diese Woche */}
         <div className="dash-card">
           <div className="dash-card-icon dash-card-icon--blue">
             <svg width="24" height="24" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -149,9 +155,9 @@ export default function DashboardPage() {
           </div>
           <div className="dash-card-content">
             <span className="dash-card-value">
-              {loading ? "—" : metrics.todayCount}
+              {loading ? "—" : metrics.thisWeekCount}
             </span>
-            <span className="dash-card-label">Heutige Schichten</span>
+            <span className="dash-card-label">Schichten diese Woche</span>
           </div>
         </div>
 
@@ -205,10 +211,10 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Tabelle der nächsten 7 Tage */}
+      {/* Timeline: Nächste 5 Schichten */}
       <div className="dashboard-table-section">
         <h3 style={{ marginTop: 32, marginBottom: 16, fontSize: '1.1rem', fontWeight: 600, color: 'var(--text)' }}>
-          Nächste 7 Tage
+          Nächste 5 Schichten
         </h3>
 
         {loading ? (

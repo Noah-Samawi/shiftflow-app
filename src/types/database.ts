@@ -1,5 +1,13 @@
 import type { User } from "@supabase/supabase-js";
 
+export interface Organization {
+  id: string;
+  name: string;
+  slug: string;
+  owner_id: string | null;
+  created_at: string;
+}
+
 export interface Profile {
   id: string;
   full_name: string;
@@ -8,6 +16,7 @@ export interface Profile {
   avatar_url: string | null;
   weekly_hours: number;
   role: "admin" | "employee";
+  org_id: string | null;
   created_at: string;
 }
 
@@ -20,6 +29,7 @@ export interface Customer {
   address: string | null;
   notes: string | null;
   color: string;
+  org_id: string | null;
   created_at: string;
 }
 
@@ -42,6 +52,7 @@ export interface Schedule {
   recurrence: ScheduleRecurrence;
   series_id: string | null;
   status: "scheduled" | "confirmed" | "completed" | "cancelled";
+  org_id: string | null;
   created_at: string;
   profiles?: Profile | null;
   customers?: Customer | null;

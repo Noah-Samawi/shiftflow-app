@@ -1,6 +1,6 @@
 import type { Schedule } from "../types/database";
 import { formatTime24 } from "./formatTime";
-import { buildWhatsAppUrl } from "./whatsapp";
+import { buildWhatsAppLink } from "./whatsapp";
 
 /**
  * Baut die Admin-Nachricht für den automatischen Schichtenreport (WhatsApp).
@@ -33,8 +33,6 @@ export function buildShiftReportMessage(schedule: Schedule): string {
 /** wa.me-Link an die Telefonnummer des zugewiesenen Mitarbeiters inkl. vorgefülltem Text */
 export function buildShiftReportWhatsAppUrl(schedule: Schedule): string | null {
   const phone = schedule.profiles?.phone;
-  const base = buildWhatsAppUrl(phone);
-  if (!base) return null;
-  const text = encodeURIComponent(buildShiftReportMessage(schedule));
-  return `${base}?text=${text}`;
+  const message = buildShiftReportMessage(schedule);
+  return buildWhatsAppLink(phone, message);
 }

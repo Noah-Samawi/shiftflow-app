@@ -1,13 +1,14 @@
-import { buildWhatsAppUrl } from "../utils/whatsapp";
+import { buildWhatsAppLink } from "../utils/whatsapp";
 
 interface WhatsAppButtonProps {
   phone: string | null | undefined;
+  message?: string;
   className?: string;
 }
 
 /** Öffnet WhatsApp-Direktnachricht in neuem Tab (wa.me). */
-export default function WhatsAppButton({ phone, className = "" }: WhatsAppButtonProps) {
-  const url = buildWhatsAppUrl(phone);
+export default function WhatsAppButton({ phone, message, className = "" }: WhatsAppButtonProps) {
+  const url = buildWhatsAppLink(phone, message);
   if (!url) return null;
 
   return (

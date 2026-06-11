@@ -80,6 +80,7 @@ export default function AddShiftModal({
           tasks: instructions || null,
           recurrence: "once",
           status: "scheduled",
+          org_id: null,
         });
       }
       onClose();

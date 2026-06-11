@@ -580,32 +580,49 @@ export default function ShiftDrawer({
                       .map((profile) => {
                         const isDisabled = unavailableEmployeeIds.has(profile.id);
                         const isSelected = selectedEmployeeIds.includes(profile.id);
+                        const initials = profile.full_name
+                          .split(' ')
+                          .map((n) => n[0])
+                          .join('')
+                          .slice(0, 2)
+                          .toUpperCase();
                         return (
-                          <label
+                          <div
                             key={profile.id}
+                            onClick={() => {
+                              if (isDisabled || saving) return;
+                              setSelectedEmployeeIds((current) =>
+                                current.includes(profile.id)
+                                  ? current.filter((id) => id !== profile.id)
+                                  : [...current, profile.id]
+                              );
+                            }}
                             className={`employee-multiselect-option${isSelected ? ' employee-multiselect-option--selected' : ''}${isDisabled ? ' employee-multiselect-option--disabled' : ''}`}
+                            style={{ cursor: isDisabled || saving ? 'not-allowed' : 'pointer' }}
                           >
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              aria-checked={isSelected}
-                              disabled={saving || isDisabled}
-                              onChange={() => {
-                                setSelectedEmployeeIds((current) =>
-                                  current.includes(profile.id)
-                                    ? current.filter((id) => id !== profile.id)
-                                    : [...current, profile.id]
-                                );
-                              }}
-                              className="employee-multiselect-checkbox"
-                            />
+                            {/* Checkbox */}
+                            <div className={`employee-checkbox ${isSelected ? 'employee-checkbox--checked' : ''} ${isDisabled ? 'employee-checkbox--disabled' : ''}`}>
+                              {isSelected && (
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M5 13l4 4L19 7" />
+                                </svg>
+                              )}
+                            </div>
+
+                            {/* Avatar Initialen */}
+                            <div className={`employee-avatar-sm ${isSelected ? 'employee-avatar-sm--selected' : ''}`}>
+                              {initials}
+                            </div>
+
+                            {/* NAME – immer sichtbar! */}
                             <span className="employee-multiselect-name">
                               {profile.full_name}
                             </span>
+
                             {isDisabled && (
                               <span className="employee-multiselect-unavailable">belegt</span>
                             )}
-                          </label>
+                          </div>
                         );
                     })}
                     {profiles.filter((p) => p.role === 'employee').length === 0 && (
