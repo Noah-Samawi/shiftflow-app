@@ -337,7 +337,7 @@ export default function ShiftDrawer({
                 `🕐 ${startTime} – ${endTime} Uhr\n` +
                 `👤 Kunde: ${cst?.name ?? ""}\n` +
                 `📋 ${tasks.trim() || "Keine weiteren Hinweise"}\n\n` +
-                `M. Sharif Nachbarschaftshilfe`;
+                `ShiftFlow`;
               void supabase.functions.invoke("notify-whatsapp", {
                 body: {
                   phoneNumber: emp.phone,

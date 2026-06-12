@@ -1,6 +1,8 @@
 import { Outlet, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
-import { type ReactNode } from "react";
+import { getCurrentOrgId } from "../hooks/useOrgId";
+import { supabase } from "../lib/supabaseClient";
+import { type ReactNode, useState, useEffect } from "react";
 import { getISOWeek } from "date-fns";
 
 interface NavItem {
@@ -71,6 +73,22 @@ export default function AppLayout() {
   const { user, isAdmin, roleLoading, signOut } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [orgName, setOrgName] = useState<string>("ShiftFlow");
+
+  // Load live organization name from DB
+  useEffect(() => {
+    async function loadOrgName() {
+      const orgId = await getCurrentOrgId();
+      if (!orgId) return;
+      const { data } = await supabase
+        .from("organizations")
+        .select("name")
+        .eq("id", orgId)
+        .single();
+      if (data?.name) setOrgName(data.name);
+    }
+    void loadOrgName();
+  }, []);
 
   const roleLabel =
     roleLoading && user
@@ -117,7 +135,10 @@ export default function AppLayout() {
                 />
               </svg>
             </div>
-            <span className="logo-text">Nachbarschaftshilfe</span>
+            <div className="sidebar-logo-text">
+              <span className="logo-text">ShiftFlow</span>
+              <span className="logo-org-name" title={orgName}>{orgName}</span>
+            </div>
           </div>
 
           {/* Navigation */}

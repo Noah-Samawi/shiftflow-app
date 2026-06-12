@@ -1,7 +1,7 @@
 {
-  "name": "ShiftManager",
-  "short_name": "Shifts",
-  "description": "Employee Scheduling & Client Management",
+  "name": "ShiftFlow",
+  "short_name": "ShiftFlow",
+  "description": "Shift scheduling & client management for service teams",
   "start_url": "/",
   "display": "standalone",
   "theme_color": "#0F172A",

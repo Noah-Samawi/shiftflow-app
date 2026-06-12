@@ -56,6 +56,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [companyName, setCompanyName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -132,13 +133,14 @@ export default function LoginPage() {
     setSubmitting(true);
     try {
       if (isSignUp) {
-        await signUp(email, password);
+        await signUp(email, password, companyName);
         setSuccess(
-          "Konto erstellt! Überprüfen Sie Ihre E-Mail zur Bestätigung, dann melden Sie sich an."
+          `Konto erstellt! Ihre Organisation "${companyName}" wurde angelegt. Überprüfen Sie Ihre E-Mail zur Bestätigung, dann melden Sie sich an.`
         );
         setIsSignUp(false);
         setPassword("");
         setConfirmPassword("");
+        setCompanyName("");
         clearRateLimit();
       } else {
         await signIn(email, password);
@@ -177,6 +179,7 @@ export default function LoginPage() {
     setError(null);
     setSuccess(null);
     setConfirmPassword("");
+    setCompanyName("");
   };
 
   const isLoading = authLoading || submitting;
@@ -200,7 +203,7 @@ export default function LoginPage() {
               />
             </svg>
           </div>
-          <span className="logo-text">Nachbarschaftshilfe</span>
+          <span className="logo-text">ShiftFlow</span>
         </div>
 
         <h1 className="login-title">
@@ -208,7 +211,7 @@ export default function LoginPage() {
         </h1>
         <p className="login-subtitle">
           {isSignUp
-            ? "Registrieren Sie sich, um Schichten und Kunden zu verwalten"
+            ? "Starten Sie jetzt – Firmenname, E-Mail und Passwort genügen"
             : "Geben Sie Ihre Zugangsdaten ein, um auf das Portal zuzugreifen"}
         </p>
 
@@ -226,6 +229,22 @@ export default function LoginPage() {
             <p className="text-xs text-red-600 mb-2">
               Account gesperrt. Wartezeit: {Math.ceil(lockoutRemaining / 60)}:{String(lockoutRemaining % 60).padStart(2, "0")}
             </p>
+          )}
+
+          {isSignUp && (
+            <div className="form-group">
+              <label htmlFor="companyName">Firmenname *</label>
+              <input
+                id="companyName"
+                type="text"
+                value={companyName}
+                onChange={(e) => setCompanyName(e.target.value)}
+                placeholder="Muster GmbH"
+                required
+                disabled={isLoading}
+                autoComplete="organization"
+              />
+            </div>
           )}
 
           <div className="form-group">

@@ -133,7 +133,7 @@ export default function JoinPage() {
               <path d="M10 16L14 20L22 12" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </div>
-          <span className="logo-text">Nachbarschaftshilfe</span>
+          <span className="logo-text">ShiftFlow</span>
         </div>
 
         <h1 className="login-title">Mitarbeiter-Registrierung</h1>

@@ -184,7 +184,7 @@ export default function EmployeesPage() {
   const handleInviteWhatsApp = (profile: Profile) => {
     if (!orgId || !profile.phone) return;
     const link = generateInviteLink(orgId, profile.phone);
-    const msg = buildInviteMessage(orgName || "M. Sharif Nachbarschaftshilfe", link);
+    const msg = buildInviteMessage(orgName || "ShiftFlow", link);
     const waUrl = buildWhatsAppLink(profile.phone, msg);
     if (waUrl) {
       window.open(waUrl, "_blank");

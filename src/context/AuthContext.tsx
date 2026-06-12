@@ -34,7 +34,7 @@ export interface UseAuthReturn {
   roleLoading: boolean;
   getCurrentUser: () => Promise<User | null>;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string) => Promise<void>;
+  signUp: (email: string, password: string, companyName?: string) => Promise<void>;
   signOut: () => Promise<void>;
   refreshRole: () => Promise<void>;
 }
@@ -154,7 +154,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [applyRole]
   );
 
-  const signUp = useCallback(async (email: string, password: string) => {
+  const signUp = useCallback(async (email: string, password: string, companyName?: string) => {
     const normalizedEmail = email.trim().toLowerCase();
 
     const { data, error } = await supabase.auth.signUp({
@@ -184,6 +184,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // RPC ggf. noch nicht deployed – Trigger macht es dann
       }
       await new Promise((r) => setTimeout(r, 300));
+
+      // Create organization for the new admin if companyName provided
+      if (companyName?.trim()) {
+        try {
+          const { error: orgErr } = await supabase.rpc("signup_create_org", {
+            p_company_name: companyName.trim(),
+          });
+          if (orgErr) {
+            console.warn("[Auth] signup_create_org:", orgErr.message);
+          }
+        } catch (orgEx) {
+          console.warn("[Auth] signup_create_org exception:", orgEx);
+        }
+      }
+
       await applyRole(data.user);
     } else if (data.user) {
       // E-Mail-Bestätigung erforderlich

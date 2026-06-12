@@ -19,6 +19,6 @@ export function buildInviteMessage(orgName: string, inviteLink: string): string 
     `Du wurdest als Mitarbeiter bei ${orgName} eingeladen.\n` +
     `Bitte registriere dich hier:\n` +
     `${inviteLink}\n\n` +
-    `M. Sharif Nachbarschaftshilfe`
+    `ShiftFlow`
   );
 }

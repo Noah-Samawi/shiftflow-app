@@ -5,7 +5,6 @@ import { getCurrentOrgId } from "../hooks/useOrgId";
 import { format, addDays, startOfWeek, endOfWeek } from "date-fns";
 import { de } from "date-fns/locale";
 import type { Profile } from "../types/database";
-
 interface DashSchedule {
   id: string;
   shift_date: string;
@@ -34,6 +33,7 @@ const STATUS_DOT: Record<string, string> = {
 export default function DashboardPage() {
   const { role } = useAuth();
 
+  const [orgName, setOrgName] = useState<string>("");
   const [metrics, setMetrics] = useState({
     thisWeekCount: 0,
     openCount: 0,
@@ -143,10 +143,25 @@ export default function DashboardPage() {
     void loadDashboard();
   }, [loadDashboard]);
 
+  // Load org name for welcome heading
+  useEffect(() => {
+    async function loadOrg() {
+      const orgId = await getCurrentOrgId();
+      if (!orgId) return;
+      const { data } = await supabase
+        .from("organizations")
+        .select("name")
+        .eq("id", orgId)
+        .single();
+      if (data?.name) setOrgName(data.name);
+    }
+    void loadOrg();
+  }, []);
+
   return (
     <div className="dashboard-page">
       <div className="dashboard-welcome">
-        <h2>Nachbarschaftshilfe — M. Sharif</h2>
+        <h2>{orgName || "ShiftFlow"}</h2>
         <p>
           {role === "admin"
             ? "Verwalten Sie Ihr Team und Kunden-Assignments."
