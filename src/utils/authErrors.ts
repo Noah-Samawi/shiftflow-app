@@ -3,6 +3,18 @@ import type { AuthError } from "@supabase/supabase-js";
 /** Übersetzt Supabase-Auth-Fehler in verständliche deutsche Meldungen. */
 export function toGermanAuthError(error: AuthError | Error): Error {
   const message = error.message.toLowerCase();
+  const status = (error as AuthError).status;
+
+  // ── 500: Supabase Auth server crash (hook, trigger, or DB issue) ───────────
+  // Happens when a Supabase Auth Hook is configured but the target DB function
+  // fails or doesn't exist. Check: Supabase Dashboard → Authentication → Hooks.
+  if (status === 500 || message.includes("unexpected_failure")) {
+    return new Error(
+      "Der Anmelde-Dienst ist momentan nicht verfügbar (Serverfehler 500). " +
+      "Bitte prüfen Sie unter Supabase → Authentication → Hooks, ob alle " +
+      "konfigurierten Hooks korrekt eingerichtet sind, und versuchen Sie es erneut."
+    );
+  }
 
   // "Database error loading user" → login-time profile missing (orphaned auth user)
   // Must be checked BEFORE the broader "database error" catch below.
