@@ -178,7 +178,7 @@ export function useProfiles(): UseProfilesReturn {
       //   3. DELETE public.profiles
       //   4. DELETE auth.identities
       //   5. DELETE auth.users  ← LAST, after all RLS-reads are done
-      const { error: rpcErr } = await supabase.rpc("admin_delete_employee", {
+      const { error: rpcErr } = await supabase.rpc("delete_user_safe", {
         p_user_id: id,
       });
 
