@@ -4,15 +4,29 @@ import type { AuthError } from "@supabase/supabase-js";
 export function toGermanAuthError(error: AuthError | Error): Error {
   const message = error.message.toLowerCase();
 
-  // Supabase Auth: "Database error finding user" → meist Trigger-Problem
+  // "Database error loading user" → login-time profile missing (orphaned auth user)
+  // Must be checked BEFORE the broader "database error" catch below.
+  if (message.includes("database error loading user")) {
+    return new Error(
+      "Anmeldung fehlgeschlagen. Bitte wenden Sie sich an den Administrator."
+    );
+  }
+
+  // "Database error finding user" → usually a trigger/migration problem on signup
   if (
     message.includes("database error finding user") ||
-    message.includes("database error") ||
     message.includes("hook") ||
     message.includes("trigger")
   ) {
     return new Error(
       "Registrierung momentan nicht möglich. Bitte prüfen Sie, ob das SQL-Skript in Supabase ausgeführt wurde (Tabellen + Trigger). Falls der Fehler weiterhin auftritt, kontaktieren Sie den Support."
+    );
+  }
+
+  // Generic database errors that don't fit the above categories
+  if (message.includes("database error")) {
+    return new Error(
+      "Ein Datenbankfehler ist aufgetreten. Bitte versuchen Sie es erneut oder kontaktieren Sie den Support."
     );
   }
 
