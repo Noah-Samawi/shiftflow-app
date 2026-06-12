@@ -140,24 +140,56 @@ export function useProfiles(): UseProfilesReturn {
 
   const deleteProfile = useCallback(
     async (id: string) => {
+      // ── Guard: resolve org + verify profile exists before any write ──
       const orgId = await getCurrentOrgId();
       if (!orgId) {
         throw new Error("Keine Organisation gefunden.");
       }
 
+      // Defensive: fetch the profile row first so we fail loudly if it
+      // is already missing (orphaned auth user) rather than silently.
+      const { data: targetProfile, error: fetchErr } = await supabase
+        .from("profiles")
+        .select("id, org_id, full_name")
+        .eq("id", id)
+        .single();
+
+      if (fetchErr || !targetProfile) {
+        // Profile already gone — could be an orphaned auth user.
+        // Surface a clear message instead of crashing.
+        const msg = "User ohne Profil erkannt – möglicherweise bereits gelöscht.";
+        setError(msg);
+        throw new Error(msg);
+      }
+
+      if (!targetProfile.org_id) {
+        const msg = "Profil hat keine Organisation – Löschen abgebrochen.";
+        setError(msg);
+        throw new Error(msg);
+      }
+
       setLoading(true);
       setError(null);
-      const { error: err } = await supabase
-        .from("profiles")
-        .delete()
-        .eq("id", id)
-        .eq("org_id", orgId);
 
-      if (err) {
-        setError(err.message);
-      } else {
-        setProfiles((prev) => prev.filter((p) => p.id !== id));
+      // ── Delegate the full delete sequence to the SECURITY DEFINER RPC ──
+      // Order inside RPC:
+      //   1. schedules.employee_id → SET NULL  (keeps shift history)
+      //   2. comments.user_id      → SET NULL  (keeps comment text)
+      //   3. DELETE public.profiles
+      //   4. DELETE auth.identities
+      //   5. DELETE auth.users  ← LAST, after all RLS-reads are done
+      const { error: rpcErr } = await supabase.rpc("admin_delete_employee", {
+        p_user_id: id,
+      });
+
+      if (rpcErr) {
+        setError(rpcErr.message);
+        setLoading(false);
+        throw new Error(rpcErr.message);
       }
+
+      // Optimistically remove from local state
+      setProfiles((prev) => prev.filter((p) => p.id !== id));
       setLoading(false);
     },
     []
