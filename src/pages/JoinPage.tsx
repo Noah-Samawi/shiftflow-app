@@ -71,11 +71,14 @@ export default function JoinPage() {
     setLoading(true);
     try {
       // 1. Sign up with Supabase Auth
+      // org_id is passed in metadata → handle_new_user() joins the invited
+      // org and sets role 'employee' server-side (org_id/role are not
+      // client-updatable). This avoids the RLS-blocked profile update.
       const { data: authData, error: authErr } = await supabase.auth.signUp({
         email: email.trim().toLowerCase(),
         password,
         options: {
-          data: { full_name: fullName.trim() },
+          data: { full_name: fullName.trim(), org_id: orgId },
         },
       });
 
@@ -85,19 +88,13 @@ export default function JoinPage() {
         throw new Error("Registrierung fehlgeschlagen. Bitte versuchen Sie es erneut.");
       }
 
-      // 2. Update profile with org_id and phone
-      const { error: profileErr } = await supabase
-        .from("profiles")
-        .update({
-          org_id: orgId,
-          phone: phone || null,
-          role: "employee",
-        })
-        .eq("id", authData.user.id);
-
-      if (profileErr) {
-        console.warn("Profile update warning:", profileErr.message);
-        // Non-fatal: Trigger may have already set some fields
+      // 2. Best-effort: set phone (an allowed column) if a session exists.
+      if (phone && authData.session) {
+        const { error: profileErr } = await supabase
+          .from("profiles")
+          .update({ phone })
+          .eq("id", authData.user.id);
+        if (profileErr) console.warn("Profile phone update warning:", profileErr.message);
       }
 
       toast.success("Konto erstellt! Sie können sich jetzt anmelden.");

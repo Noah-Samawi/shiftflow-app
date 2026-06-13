@@ -45,6 +45,10 @@ export interface Schedule {
   shift_date: string;
   start_time: string;
   end_time: string;
+  /** Pause in Minuten (wird von worked_minutes abgezogen; DB-Default 0) */
+  break_minutes?: number;
+  /** Netto-Arbeitsminuten — von der DB berechnet (generated column, read-only) */
+  worked_minutes?: number;
   /** Spezifische Aufgaben für diese Schicht */
   tasks: string | null;
   /** Legacy-Feld – wird aus DB mitgelesen, bevorzugt tasks */
