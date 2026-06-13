@@ -22,6 +22,7 @@ interface UseSchedulesReturn {
     recurrence: ScheduleRecurrence;
     status?: Schedule["status"];
     occurrences?: number;
+    break_minutes?: number;
   }) => Promise<void>;
   updateSchedule: (
     id: string,
@@ -158,6 +159,7 @@ export function useSchedules(): UseSchedulesReturn {
       recurrence: ScheduleRecurrence;
       status?: Schedule["status"];
       occurrences?: number;
+      break_minutes?: number;
     }) => {
       const orgId = await getCurrentOrgId();
       if (!orgId) {
@@ -178,6 +180,7 @@ export function useSchedules(): UseSchedulesReturn {
         p_status: input.status ?? "scheduled",
         p_occurrences: input.occurrences ?? 12,
         p_org_id: orgId,
+        p_break_minutes: input.break_minutes ?? 0,
       });
 
       if (err) {

@@ -523,6 +523,7 @@ export default function SchedulerCalendar() {
     shift_date: string;
     start_time: string;
     end_time: string;
+    break_minutes: number;
     tasks: string | null;
     recurrence: ScheduleRecurrence;
     occurrences: number;
@@ -546,6 +547,7 @@ export default function SchedulerCalendar() {
         p_status: input.status,
         p_occurrences: input.occurrences,
         p_org_id: orgId,
+        p_break_minutes: input.break_minutes,
       });
       if (error) throw new Error(error.message);
       toast.success('Serientermin gespeichert!');
@@ -560,6 +562,7 @@ export default function SchedulerCalendar() {
       shift_date: input.shift_date,
       start_time: input.start_time,
       end_time: input.end_time,
+      break_minutes: input.break_minutes,
       tasks: input.tasks,
       instructions: input.tasks,
       status: input.status,

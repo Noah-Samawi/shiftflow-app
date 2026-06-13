@@ -24,6 +24,7 @@ interface ShiftDrawerProps {
     shift_date: string;
     start_time: string;
     end_time: string;
+    break_minutes: number;
     tasks: string | null;
     recurrence: ScheduleRecurrence;
     /** Nur bei weekly/biweekly — RPC legt Serientermine an */
@@ -87,6 +88,7 @@ export default function ShiftDrawer({
   const [dateTo, setDateTo] = useState("");
   const [startTime, setStartTime] = useState("08:00");
   const [endTime, setEndTime] = useState("16:00");
+  const [breakMinutes, setBreakMinutes] = useState(0);
   const [tasks, setTasks] = useState("");
   const [recurrence, setRecurrence] = useState<ScheduleRecurrence>("once");
   const [occurrences, setOccurrences] = useState(1);
@@ -155,6 +157,7 @@ export default function ShiftDrawer({
       setDateTo(initialDate);
       setStartTime("08:00");
       setEndTime("16:00");
+      setBreakMinutes(0);
       setTasks("");
       setRecurrence("once");
       setOccurrences(1);
@@ -168,6 +171,7 @@ export default function ShiftDrawer({
       setDateTo(schedule.shift_date);
       setStartTime(normalizeTimeInput(schedule.start_time));
       setEndTime(normalizeTimeInput(schedule.end_time));
+      setBreakMinutes(schedule.break_minutes ?? 0);
       setTasks(schedule.tasks || schedule.instructions || "");
       setRecurrence(schedule.recurrence ?? "once");
       setStatus(schedule.status);
@@ -302,6 +306,7 @@ export default function ShiftDrawer({
               shift_date: shiftDateValue,
               start_time: startTime + ":00",
               end_time: endTime + ":00",
+              break_minutes: breakMinutes,
               tasks: tasks.trim() || null,
               recurrence,
               occurrences: occ,
@@ -360,6 +365,7 @@ export default function ShiftDrawer({
           shift_date: dateFrom,
           start_time: startTime + ":00",
           end_time: endTime + ":00",
+          break_minutes: breakMinutes,
           tasks: tasks.trim() || null,
           status,
         });
@@ -373,6 +379,7 @@ export default function ShiftDrawer({
                 shift_date: shiftDateValue,
                 start_time: startTime + ":00",
                 end_time: endTime + ":00",
+                break_minutes: breakMinutes,
                 tasks: tasks.trim() || null,
                 recurrence: "once",
                 occurrences: 1,
@@ -546,6 +553,18 @@ export default function ShiftDrawer({
                     value={endTime}
                     onChange={(e) => setEndTime(e.target.value)}
                     required
+                    disabled={saving}
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="drawer-break">Pause (Min.)</label>
+                  <input
+                    id="drawer-break"
+                    type="number"
+                    min="0"
+                    step="5"
+                    value={breakMinutes}
+                    onChange={(e) => setBreakMinutes(Math.max(0, parseInt(e.target.value, 10) || 0))}
                     disabled={saving}
                   />
                 </div>

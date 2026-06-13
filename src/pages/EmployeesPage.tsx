@@ -1,4 +1,5 @@
 import { useState, useEffect, type FormEvent } from "react";
+import toast from "react-hot-toast";
 import { supabase } from "../lib/supabaseClient";
 import { useProfiles } from "../hooks/useProfiles";
 import { useAuth } from "../hooks/useAuth";
@@ -55,6 +56,8 @@ export default function EmployeesPage() {
   const [weeklyStats, setWeeklyStats] = useState<Record<string, number>>({});
   const [orgId, setOrgId] = useState<string | null>(null);
   const [orgName, setOrgName] = useState<string>("");
+  const [exportMonth, setExportMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [exporting, setExporting] = useState(false);
 
   // Pagination (10/25/50) — hält die gerenderte Liste performant
   const {
@@ -181,6 +184,53 @@ export default function EmployeesPage() {
     setDeleteConfirm(null);
   };
 
+  // Payroll export: per-employee/per-week totals for the selected month.
+  // All hour math comes from the DB (report_worked_hours); we only format CSV.
+  const handleExportPayroll = async () => {
+    setExporting(true);
+    try {
+      const [y, m] = exportMonth.split("-").map(Number);
+      const from = `${exportMonth}-01`;
+      const lastDay = new Date(y, m, 0).getDate(); // m is 1-based → last day of that month
+      const to = `${exportMonth}-${String(lastDay).padStart(2, "0")}`;
+      const { data, error: rpcErr } = await supabase.rpc("report_worked_hours", {
+        p_from: from,
+        p_to: to,
+      });
+      if (rpcErr) throw new Error(rpcErr.message);
+
+      const rows = (data ?? []) as Array<Record<string, number | string>>;
+      const h = (min: number | string) => (Number(min) / 60).toFixed(2);
+      const header = [
+        "Mitarbeiter", "ISO-Jahr", "KW", "Woche ab",
+        "Gearbeitet (Std)", "Pause (Std)", "Soll (Std)", "Überstunden (Std)",
+      ];
+      const csv = [header.join(";")]
+        .concat(
+          rows.map((r) =>
+            [
+              r.full_name, r.iso_year, r.iso_week, r.week_start,
+              h(r.worked_minutes), h(r.break_minutes), h(r.contracted_minutes), h(r.overtime_minutes),
+            ].join(";")
+          )
+        )
+        .join("\n");
+
+      const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `stunden_${exportMonth}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success(rows.length ? "Export erstellt." : "Keine Stunden im Zeitraum.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Export fehlgeschlagen.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const handleInviteWhatsApp = (profile: Profile) => {
     if (!orgId || !profile.phone) return;
     const link = generateInviteLink(orgId, profile.phone);
@@ -196,6 +246,21 @@ export default function EmployeesPage() {
       <div className="page-actions">
         <div className="page-actions__group">
           <PrintButton />
+          {isAdmin && (
+            <>
+              <input
+                type="month"
+                value={exportMonth}
+                onChange={(e) => setExportMonth(e.target.value)}
+                disabled={exporting}
+                aria-label="Monat für Stundenexport"
+                title="Monat für Stundenexport"
+              />
+              <button className="btn-secondary" onClick={handleExportPayroll} disabled={exporting}>
+                {exporting ? "Export…" : "Stunden exportieren (CSV)"}
+              </button>
+            </>
+          )}
           {isAdmin && (
             <button className="btn-primary" onClick={openAdd}>
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
