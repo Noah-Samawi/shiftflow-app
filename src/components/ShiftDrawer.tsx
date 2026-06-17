@@ -64,6 +64,32 @@ const RECURRENCE_OPTIONS: { value: ScheduleRecurrence; label: string }[] = [
   { value: "monthly", label: "Monatlich" },
 ];
 
+// Zeitraum-Optionen für das „Anzahl Wiederholungen“-Dropdown (in Monaten)
+const OCCURRENCE_OPTIONS = [
+  { value: 1, label: "1 Monat" },
+  { value: 2, label: "2 Monate" },
+  { value: 3, label: "3 Monate" },
+  { value: 6, label: "Halbes Jahr" },
+  { value: 12, label: "Ein Jahr" },
+];
+
+// Rechnet einen Zeitraum (in Monaten) in die Anzahl der Wiederholungen um
+function calcOccurrences(recurrence: string, months: number): number {
+  switch (recurrence) {
+    case "weekly":
+      return months * 4;
+
+    case "biweekly":
+      return months * 2;
+
+    case "monthly":
+      return months;
+
+    default:
+      return 1;
+  }
+}
+
 export default function ShiftDrawer({
   mode,
   schedule,
@@ -91,7 +117,7 @@ export default function ShiftDrawer({
   const [breakMinutes, setBreakMinutes] = useState(0);
   const [tasks, setTasks] = useState("");
   const [recurrence, setRecurrence] = useState<ScheduleRecurrence>("once");
-  const [occurrences, setOccurrences] = useState(1);
+  const [selectedMonths, setSelectedMonths] = useState(1);
   const [status, setStatus] = useState<Schedule["status"]>("scheduled");
   const [unavailableEmployeeIds, setUnavailableEmployeeIds] = useState<Set<string>>(new Set());
   const [loadingAvailability, setLoadingAvailability] = useState(false);
@@ -125,17 +151,12 @@ export default function ShiftDrawer({
   const isFormMode = isAdmin && (mode === "create" || mode === "edit");
   const displaySchedule = schedule;
 
-  // Occurrences automatisch setzen wenn Wiederholung wechselt
+  // Zeitraum zurücksetzen, sobald keine Wiederholung mehr gewählt ist
   useEffect(() => {
-    if (mode !== "create") return;
-    const defaults: Record<string, number> = {
-      once: 1,
-      weekly: 4,
-      biweekly: 4,
-      monthly: 3,
-    };
-    setOccurrences(defaults[recurrence] ?? 1);
-  }, [recurrence, mode]);
+    if (recurrence === "once") {
+      setSelectedMonths(1);
+    }
+  }, [recurrence]);
 
   useEffect(() => {
     if (mode !== "view" || schedule) {
@@ -164,7 +185,7 @@ export default function ShiftDrawer({
       setBreakMinutes(0);
       setTasks("");
       setRecurrence("once");
-      setOccurrences(1);
+      setSelectedMonths(1);
       setStatus("scheduled");
       setFormError(null);
       setUnavailableEmployeeIds(new Set());
@@ -301,7 +322,7 @@ export default function ShiftDrawer({
     const occ =
       recurrence === "once"
         ? 1
-        : Math.min(52, Math.max(1, occurrences));
+        : calcOccurrences(recurrence, selectedMonths);
 
     try {
       const dates = getDateRange(dateFrom, dateTo);
@@ -750,6 +771,38 @@ export default function ShiftDrawer({
                   ))}
                 </select>
               </div>
+
+              {/* Zeitraum – nur sichtbar, wenn eine Wiederholung gewählt ist */}
+              {recurrence !== "once" && (
+                <div className="form-group">
+                  <label htmlFor="drawer-occurrences">Zeitraum</label>
+                  <select
+                    id="drawer-occurrences"
+                    value={selectedMonths}
+                    onChange={(e) =>
+                      setSelectedMonths(Number(e.target.value))
+                    }
+                    disabled={saving}
+                  >
+                    {OCCURRENCE_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                  {(() => {
+                    const totalShifts =
+                      calcOccurrences(recurrence, selectedMonths) *
+                        selectedEmployeeIds.length || 1;
+                    return (
+                      <p className="text-xs text-blue-600 mt-1">
+                        → {totalShifts} Schicht
+                        {totalShifts !== 1 ? "en" : ""} werden erstellt
+                      </p>
+                    );
+                  })()}
+                </div>
+              )}
 
               <div className="drawer-sticky-footer">
                 {mode === "edit" && onDelete && (
