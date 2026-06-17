@@ -586,11 +586,18 @@ export default function SchedulerCalendar() {
       throw new Error('Keine Organisation gefunden.');
     }
 
+    // recurrence ist in `data` enthalten (ShiftDrawer onUpdate) und wird hier
+    // explizit im Payload gehalten, damit der Wert beim UPDATE garantiert mitgeht.
     const payload = {
       ...data,
+      ...(data.recurrence !== undefined ? { recurrence: data.recurrence } : {}),
       ...(data.tasks !== undefined ? { instructions: data.tasks } : {}),
     };
-    const { error } = await supabase.from('schedules').update(payload).eq('id', id).eq('org_id', orgId);
+    const { error } = await supabase
+      .from('schedules')
+      .update(payload)
+      .eq('id', id)
+      .eq('org_id', orgId);
     if (error) throw new Error(error.message);
     toast.success("Schicht aktualisiert!");
     await loadSchedules();
