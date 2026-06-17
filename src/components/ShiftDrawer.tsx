@@ -99,6 +99,10 @@ export default function ShiftDrawer({
   const [employeeDropdownOpen, setEmployeeDropdownOpen] = useState(false);
   const employeeDropdownRef = useRef<HTMLDivElement>(null);
 
+  // Suchfelder für Kunden- und Mitarbeiterauswahl (nur Filterung, Auswahl-Logik bleibt unverändert)
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [employeeSearch, setEmployeeSearch] = useState("");
+
   // Close dropdown on outside click
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -164,6 +168,8 @@ export default function ShiftDrawer({
       setStatus("scheduled");
       setFormError(null);
       setUnavailableEmployeeIds(new Set());
+      setCustomerSearch("");
+      setEmployeeSearch("");
     } else if (schedule) {
       setSelectedEmployeeIds(schedule.employee_id ? [schedule.employee_id] : []);
       setCustomerId(schedule.customer_id);
@@ -177,6 +183,8 @@ export default function ShiftDrawer({
       setStatus(schedule.status);
       setFormError(null);
       setUnavailableEmployeeIds(new Set());
+      setCustomerSearch("");
+      setEmployeeSearch("");
     }
   }, [mode, schedule, defaultDate, defaultEmployeeId]);
 
@@ -367,6 +375,7 @@ export default function ShiftDrawer({
           end_time: endTime + ":00",
           break_minutes: breakMinutes,
           tasks: tasks.trim() || null,
+          recurrence,
           status,
         });
 
@@ -433,6 +442,17 @@ export default function ShiftDrawer({
     ? profiles.find((p) => p.id === displaySchedule.employee_id)
     : null;
 
+  // Kundenliste nach Suchbegriff filtern (Groß-/Kleinschreibung ignorieren)
+  const filteredCustomers = customers.filter((c) =>
+    c.name.toLowerCase().includes(customerSearch.trim().toLowerCase())
+  );
+
+  // Mitarbeiterliste (nur Rolle "employee") nach Suchbegriff filtern
+  const employeeOptions = profiles.filter((p) => p.role === "employee");
+  const filteredEmployees = employeeOptions.filter((p) =>
+    p.full_name.toLowerCase().includes(employeeSearch.trim().toLowerCase())
+  );
+
   const formatTime = (t: string) => {
     const [h, m] = t.split(":");
     return `${h.padStart(2, "0")}:${(m ?? "00").padStart(2, "0").slice(0, 2)}`;
@@ -482,6 +502,14 @@ export default function ShiftDrawer({
 
               <div className="form-group">
                 <label htmlFor="drawer-customer">Kunde *</label>
+                <input
+                  type="text"
+                  placeholder="Kunde suchen..."
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm mb-2"
+                  value={customerSearch}
+                  onChange={(e) => setCustomerSearch(e.target.value)}
+                  disabled={saving || loadingCustomers}
+                />
                 <select
                   id="drawer-customer"
                   value={customerId}
@@ -496,7 +524,7 @@ export default function ShiftDrawer({
                         ? "Keine Kunden vorhanden"
                         : "— Kunde wählen —"}
                   </option>
-                  {customers.map((c) => (
+                  {filteredCustomers.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
                     </option>
@@ -507,6 +535,11 @@ export default function ShiftDrawer({
                     Keine Kunden gefunden. Bitte zuerst einen Kunden anlegen.
                   </p>
                 )}
+                {customers.length > 0 &&
+                  filteredCustomers.length === 0 &&
+                  !loadingCustomers && (
+                    <p className="text-xs text-gray-500 mt-1">Kein Kunde gefunden</p>
+                  )}
               </div>
 
               <div className="form-group">
@@ -556,18 +589,6 @@ export default function ShiftDrawer({
                     disabled={saving}
                   />
                 </div>
-                <div className="form-group">
-                  <label htmlFor="drawer-break">Pause (Min.)</label>
-                  <input
-                    id="drawer-break"
-                    type="number"
-                    min="0"
-                    step="5"
-                    value={breakMinutes}
-                    onChange={(e) => setBreakMinutes(Math.max(0, parseInt(e.target.value, 10) || 0))}
-                    disabled={saving}
-                  />
-                </div>
               </div>
 
               <div className="form-group" ref={employeeDropdownRef}>
@@ -594,8 +615,15 @@ export default function ShiftDrawer({
               
                 {employeeDropdownOpen && (
                   <div className="employee-multiselect-dropdown">
-                    {profiles
-                      .filter((p) => p.role === 'employee')
+                    <input
+                      type="text"
+                      placeholder="Mitarbeiter suchen..."
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm mb-2"
+                      value={employeeSearch}
+                      onChange={(e) => setEmployeeSearch(e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                    {filteredEmployees
                       .map((profile) => {
                         const isDisabled = unavailableEmployeeIds.has(profile.id);
                         const isSelected = selectedEmployeeIds.includes(profile.id);
@@ -644,8 +672,11 @@ export default function ShiftDrawer({
                           </div>
                         );
                     })}
-                    {profiles.filter((p) => p.role === 'employee').length === 0 && (
+                    {employeeOptions.length === 0 && (
                       <p className="employee-multiselect-empty">Keine Mitarbeiter vorhanden.</p>
+                    )}
+                    {employeeOptions.length > 0 && filteredEmployees.length === 0 && (
+                      <p className="employee-multiselect-empty">Kein Mitarbeiter gefunden</p>
                     )}
                   </div>
                 )}
@@ -701,57 +732,24 @@ export default function ShiftDrawer({
                 </select>
               </div>
 
-              {mode === "create" && (
-                <>
-                  <div className="form-group">
-                    <label htmlFor="drawer-recurrence">Wiederholung</label>
-                    <select
-                      id="drawer-recurrence"
-                      value={recurrence}
-                      onChange={(e) =>
-                        setRecurrence(e.target.value as ScheduleRecurrence)
-                      }
-                      disabled={saving}
-                    >
-                      {RECURRENCE_OPTIONS.map((o) => (
-                        <option key={o.value} value={o.value}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {recurrence !== "once" && (
-                    <div className="form-group">
-                      <label htmlFor="drawer-occurrences">
-                        Anzahl der Wiederholungen
-                      </label>
-                      <input
-                        id="drawer-occurrences"
-                        type="number"
-                        min={1}
-                        max={recurrence === "monthly" ? 24 : 52}
-                        value={occurrences}
-                        onChange={(e) =>
-                          setOccurrences(
-                            Math.min(
-                              recurrence === "monthly" ? 24 : 52,
-                              Math.max(1, parseInt(e.target.value, 10) || 1)
-                            )
-                          )
-                        }
-                        disabled={saving}
-                      />
-                      <p className="form-hint form-hint--inline">
-                        Serientermine werden per Datenbank-RPC angelegt
-                        {recurrence === "monthly"
-                          ? " (Monate)."
-                          : " (Wochen)."}
-                      </p>
-                    </div>
-                  )}
-                </>
-              )}
+              {/* Wiederholung – sowohl beim Anlegen als auch beim Bearbeiten editierbar */}
+              <div className="form-group">
+                <label htmlFor="drawer-recurrence">Wiederholung</label>
+                <select
+                  id="drawer-recurrence"
+                  value={recurrence}
+                  onChange={(e) =>
+                    setRecurrence(e.target.value as ScheduleRecurrence)
+                  }
+                  disabled={saving}
+                >
+                  {RECURRENCE_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
               <div className="drawer-sticky-footer">
                 {mode === "edit" && onDelete && (

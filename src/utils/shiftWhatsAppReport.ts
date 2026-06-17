@@ -11,6 +11,7 @@ export function buildShiftReportMessage(schedule: Schedule): string {
     schedule.profiles?.full_name?.trim() || "Mitarbeiter/in";
   const customer = schedule.customers ?? schedule.clients;
   const customerName = customer?.name?.trim() || "—";
+  const address = customer?.address?.trim();
   const tasks =
     schedule.tasks?.trim() ||
     schedule.instructions?.trim() ||
@@ -23,11 +24,21 @@ export function buildShiftReportMessage(schedule: Schedule): string {
   const timeFrom = formatTime24(schedule.start_time);
   const timeTo = formatTime24(schedule.end_time);
 
-  return (
-    `Hallo ${employeeName}, du hast eine Schicht am ${dateLabel} ` +
-    `von ${timeFrom} bis ${timeTo} beim Kunden ${customerName}. ` +
-    `Aufgaben: ${tasks}`
-  );
+  // Zeilenumbrüche (\n) werden von encodeURIComponent zu %0A kodiert.
+  const lines = [
+    `Hallo ${employeeName},`,
+    `du hast eine Schicht am ${dateLabel} von ${timeFrom} bis ${timeTo}`,
+    `beim Kunden ${customerName}.`,
+  ];
+
+  // Adresszeile nur anhängen, wenn eine Adresse hinterlegt ist.
+  if (address) {
+    lines.push(`Adresse: ${address}`);
+  }
+
+  lines.push(`Aufgaben: ${tasks}`);
+
+  return lines.join("\n");
 }
 
 /** wa.me-Link an die Telefonnummer des zugewiesenen Mitarbeiters inkl. vorgefülltem Text */
