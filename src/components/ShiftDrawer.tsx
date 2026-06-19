@@ -30,6 +30,8 @@ interface ShiftDrawerProps {
     /** Nur bei weekly/biweekly — RPC legt Serientermine an */
     occurrences: number;
     status: Schedule["status"];
+    /** Gemeinsame ID für Mehrtage-Schichten (einmalig über Zeitraum erstellt) */
+    series_id?: string | null;
   }) => Promise<void>;
   onUpdate?: (
     id: string,
@@ -328,6 +330,10 @@ export default function ShiftDrawer({
       const dates = getDateRange(dateFrom, dateTo);
       if (mode === "create" && onSave) {
         for (const employeeId of selectedEmployeeIds) {
+          // Mehrtage-Schicht (einmalig über Zeitraum): alle Tage dieses
+          // Mitarbeiters über eine gemeinsame series_id gruppieren, damit
+          // die WhatsApp-Nachricht den Gesamt-Zeitraum anzeigen kann.
+          const seriesId = dates.length > 1 ? crypto.randomUUID() : null;
           for (const shiftDateValue of dates) {
             await onSave({
               employee_id: employeeId,
@@ -340,6 +346,7 @@ export default function ShiftDrawer({
               recurrence,
               occurrences: occ,
               status,
+              series_id: seriesId,
             });
           }
         }
@@ -402,6 +409,7 @@ export default function ShiftDrawer({
 
         if (selectedEmployeeIds.length > 1 && onSave) {
           for (const extraEmployeeId of selectedEmployeeIds.slice(1)) {
+            const seriesId = dates.length > 1 ? crypto.randomUUID() : null;
             for (const shiftDateValue of dates) {
               await onSave({
                 employee_id: extraEmployeeId,
@@ -414,6 +422,7 @@ export default function ShiftDrawer({
                 recurrence: "once",
                 occurrences: 1,
                 status,
+                series_id: seriesId,
               });
             }
           }

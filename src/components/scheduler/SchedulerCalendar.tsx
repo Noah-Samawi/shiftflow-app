@@ -614,6 +614,7 @@ export default function SchedulerCalendar() {
     recurrence: ScheduleRecurrence;
     occurrences: number;
     status: Schedule['status'];
+    series_id?: string | null;
   }) => {
     const orgId = await getCurrentOrgId();
     if (!orgId) {
@@ -654,6 +655,7 @@ export default function SchedulerCalendar() {
       status: input.status,
       recurrence: 'once' as const,
       org_id: orgId,
+      series_id: input.series_id ?? null,
     };
     const { error } = await supabase.from('schedules').insert(payload);
     if (error) throw new Error(error.message);
