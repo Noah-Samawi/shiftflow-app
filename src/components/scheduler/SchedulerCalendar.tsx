@@ -88,34 +88,71 @@ const SCHEDULE_SELECT = `
   customers ( id, name, color, address, phone )
 `;
 
+/** Kleines Häkchen-Icon (Inline-SVG, keine externe Icon-Library) */
+function CheckIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" className={className} fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+      <path d="M3 8.5l3 3 7-7" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function ShiftCard({
   schedule,
   onClick,
   onDoubleClick,
   showWhatsApp,
+  selectionMode = false,
+  isSelected = false,
+  onToggleSelect,
 }: {
   schedule: Schedule;
   onClick: (s: Schedule) => void;
   onDoubleClick?: (s: Schedule) => void;
   showWhatsApp: boolean;
+  selectionMode?: boolean;
+  isSelected?: boolean;
+  onToggleSelect?: (id: string) => void;
 }) {
   const customer = schedule.customers ?? schedule.clients;
+
+  const handleClick = () => {
+    if (selectionMode) {
+      onToggleSelect?.(schedule.id);
+    } else {
+      onClick(schedule);
+    }
+  };
 
   return (
     <div className="shift-card-row">
       <button
         type="button"
-        onClick={() => onClick(schedule)}
-        onDoubleClick={() => onDoubleClick?.(schedule)}
-        className="
+        onClick={handleClick}
+        onDoubleClick={() => {
+          if (!selectionMode) onDoubleClick?.(schedule);
+        }}
+        className={`
           shift-card-btn w-full text-left px-2 py-1.5 rounded-lg
           border-l-4 text-xs font-medium mb-1
-          bg-white shadow-sm hover:shadow-md
-          transition-all cursor-pointer
-        "
+          shadow-sm hover:shadow-md
+          transition-all cursor-pointer relative
+          ${isSelected ? 'bg-blue-50 ring-2 ring-blue-500' : 'bg-white'}
+        `}
         style={{ borderLeftColor: customer?.color ?? '#3B82F6' }}
+        aria-pressed={selectionMode ? isSelected : undefined}
       >
-        <p className="font-bold text-gray-800 text-xs">
+        {selectionMode && (
+          <span
+            className={`
+              absolute top-1 left-1 w-4 h-4 rounded border flex items-center justify-center
+              ${isSelected ? 'bg-blue-500 border-blue-500 text-white' : 'bg-white border-gray-300'}
+            `}
+          >
+            {isSelected && <CheckIcon className="w-3 h-3" />}
+          </span>
+        )}
+        <p className={`font-bold text-gray-800 text-xs ${selectionMode ? 'pl-5' : ''}`}>
           {schedule.start_time.slice(0, 5)} – {schedule.end_time.slice(0, 5)}
         </p>
         <p className="text-gray-600 truncate">
@@ -133,7 +170,7 @@ function ShiftCard({
           </span>
         )}
       </button>
-      {showWhatsApp && (
+      {showWhatsApp && !selectionMode && (
         <ShiftWhatsAppReportButton schedule={schedule} variant="icon" />
       )}
     </div>
@@ -149,6 +186,9 @@ function DayCell({
   onShiftClick,
   onShiftDoubleClick,
   isAdmin,
+  selectionMode = false,
+  selectedIds,
+  onToggleSelect,
 }: {
   date: Date;
   schedules: Schedule[];
@@ -158,6 +198,9 @@ function DayCell({
   onShiftClick: (s: Schedule) => void;
   onShiftDoubleClick?: (s: Schedule) => void;
   isAdmin: boolean;
+  selectionMode?: boolean;
+  selectedIds?: Set<string>;
+  onToggleSelect?: (id: string) => void;
 }) {
   const today = isToday(date);
   const dateStr = format(date, 'd');
@@ -226,6 +269,9 @@ function DayCell({
             onClick={onShiftClick}
             onDoubleClick={onShiftDoubleClick}
             showWhatsApp={isAdmin}
+            selectionMode={selectionMode}
+            isSelected={selectedIds?.has(s.id) ?? false}
+            onToggleSelect={onToggleSelect}
           />
         ))}
       </div>
@@ -242,6 +288,9 @@ function DayViewList({
   loading,
   onAddShift,
   onShiftClick,
+  selectionMode = false,
+  selectedIds,
+  onToggleSelect,
 }: {
   date: Date;
   schedules: Schedule[];
@@ -250,6 +299,9 @@ function DayViewList({
   loading: boolean;
   onAddShift: (date: Date) => void;
   onShiftClick: (s: Schedule) => void;
+  selectionMode?: boolean;
+  selectedIds?: Set<string>;
+  onToggleSelect?: (id: string) => void;
 }) {
   const weekend = isWeekend(date);
   const dateLabel = format(date, 'EEEE, d. MMMM yyyy', { locale: de });
@@ -284,13 +336,26 @@ function DayViewList({
           {schedules.map((s) => {
             const customer = s.customers ?? s.clients;
             const colorClass = getShiftCardClass(s);
+            const isSelected = selectedIds?.has(s.id) ?? false;
             return (
               <li key={s.id} className="day-view__item">
                 <button
                   type="button"
-                  className={`day-view__card ${colorClass}`}
-                  onClick={() => onShiftClick(s)}
+                  className={`day-view__card ${colorClass}${isSelected ? ' ring-2 ring-blue-500 bg-blue-50' : ''}`}
+                  onClick={() =>
+                    selectionMode ? onToggleSelect?.(s.id) : onShiftClick(s)
+                  }
+                  aria-pressed={selectionMode ? isSelected : undefined}
                 >
+                  {selectionMode && (
+                    <span
+                      className={`inline-flex items-center justify-center w-4 h-4 mr-2 rounded border align-middle ${
+                        isSelected ? 'bg-blue-500 border-blue-500 text-white' : 'bg-white border-gray-300'
+                      }`}
+                    >
+                      {isSelected && <CheckIcon className="w-3 h-3" />}
+                    </span>
+                  )}
                   <div className="day-view__card-time">
                     {formatTimeRange24(s.start_time, s.end_time)}
                   </div>
@@ -305,7 +370,7 @@ function DayViewList({
                     </p>
                   )}
                 </button>
-                {isAdmin && (
+                {isAdmin && !selectionMode && (
                   <ShiftWhatsAppReportButton schedule={s} variant="icon" />
                 )}
               </li>
@@ -336,6 +401,27 @@ export default function SchedulerCalendar() {
   const [drawerMode, setDrawerMode] = useState<ShiftDrawerMode>('view');
   const [selectedSchedule, setSelectedSchedule] = useState<Schedule | null>(null);
   const [createDate, setCreateDate] = useState<string | null>(null);
+
+  // Mehrfachauswahl (Bulk-Delete) – ohne Einfluss auf Einzel-/Serien-Löschen
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const toggleSelectionMode = () => {
+    setSelectionMode((prev) => !prev);
+    setSelectedIds(new Set());
+  };
+
+  const toggleShiftSelection = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
 
   const fetchGeneration = useRef(0);
 
@@ -615,6 +701,56 @@ export default function SchedulerCalendar() {
     await loadSchedules();
   };
 
+  /**
+   * Bulk-Delete: löscht alle markierten Schichten gesammelt.
+   * Eigenständige Funktion – Einzel-Löschen (handleDeleteShift) und
+   * Serien-Löschen bleiben davon unberührt.
+   */
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+
+    const orgId = await getCurrentOrgId();
+    if (!orgId) {
+      alert('Keine Organisation gefunden.');
+      return;
+    }
+
+    // Sicherheitsprüfung: Alle ausgewählten Schichten müssen zur aktuell
+    // geladenen (org-gefilterten) Liste gehören. Falls nicht → Abbruch.
+    const idsInOrg = new Set(schedules.map((s) => s.id));
+    const allBelongToOrg = Array.from(selectedIds).every((id) => idsInOrg.has(id));
+    if (!allBelongToOrg) {
+      alert('Abbruch: Mindestens eine ausgewählte Schicht gehört nicht zur aktuellen Organisation.');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `${selectedIds.size} Schicht(en) wirklich löschen?`
+    );
+    if (!confirmed) return;
+
+    try {
+      const { error } = await supabase
+        .from('schedules')
+        .delete()
+        .in('id', Array.from(selectedIds))
+        .eq('org_id', orgId);
+
+      if (error) throw error;
+
+      setSchedules((prev) => prev.filter((s) => !selectedIds.has(s.id)));
+      setSelectedIds(new Set());
+      setSelectionMode(false);
+      toast.success('Schichten gelöscht.');
+
+      await loadSchedules();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Unbekannter Fehler';
+      console.error(err);
+      alert('Fehler beim Löschen: ' + message);
+    }
+  };
+
   const headerTitle = useMemo(() => {
     if (viewMode === 'tag') {
       return format(currentDate, 'EEEE, d. MMMM yyyy', { locale: de });
@@ -687,6 +823,40 @@ export default function SchedulerCalendar() {
             Heute
           </button>
 
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={toggleSelectionMode}
+              className="scheduler-calendar__btn-today"
+              aria-pressed={selectionMode}
+              style={
+                selectionMode
+                  ? { background: '#2563eb', color: '#fff', borderColor: '#2563eb' }
+                  : undefined
+              }
+              title="Mehrere Schichten auswählen und gesammelt löschen"
+            >
+              <span className="inline-flex items-center gap-1.5">
+                {/* CheckSquare (Inline-SVG, keine externe Icon-Library) */}
+                <svg
+                  viewBox="0 0 24 24"
+                  width="16"
+                  height="16"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <polyline points="9 11 12 14 22 4" />
+                  <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+                </svg>
+                Mehrfachauswahl
+              </span>
+            </button>
+          )}
+
           <div className="scheduler-calendar__view-tabs" role="tablist" aria-label="Kalenderansicht">
             {(['tag', 'woche', 'zwei_wochen', 'monat'] as ViewMode[]).map((mode) => (
               <button
@@ -732,6 +902,9 @@ export default function SchedulerCalendar() {
             loading={loading}
             onAddShift={openCreateDrawer}
             onShiftClick={openViewDrawer}
+            selectionMode={selectionMode}
+            selectedIds={selectedIds}
+            onToggleSelect={toggleShiftSelection}
           />
         )}
 
@@ -766,6 +939,9 @@ export default function SchedulerCalendar() {
                     onShiftClick={openViewDrawer}
                     onShiftDoubleClick={handleShiftDoubleClick}
                     isAdmin={isAdmin}
+                    selectionMode={selectionMode}
+                    selectedIds={selectedIds}
+                    onToggleSelect={toggleShiftSelection}
                   />
                 );
               })
@@ -804,6 +980,9 @@ export default function SchedulerCalendar() {
                     onShiftClick={openViewDrawer}
                     onShiftDoubleClick={handleShiftDoubleClick}
                     isAdmin={isAdmin}
+                    selectionMode={selectionMode}
+                    selectedIds={selectedIds}
+                    onToggleSelect={toggleShiftSelection}
                   />
                 );
               })
@@ -844,6 +1023,9 @@ export default function SchedulerCalendar() {
                     onAddShift={openCreateDrawer}
                     onShiftClick={openViewDrawer}
                     isAdmin={isAdmin}
+                    selectionMode={selectionMode}
+                    selectedIds={selectedIds}
+                    onToggleSelect={toggleShiftSelection}
                   />
                 );
               })
@@ -862,6 +1044,32 @@ export default function SchedulerCalendar() {
         </p>
       )}
       {calendarPanel}
+
+      {selectionMode && selectedIds.size > 0 && (
+        <div
+          className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-4 py-3 rounded-xl bg-white shadow-xl border border-gray-200"
+          role="region"
+          aria-label="Mehrfachauswahl-Aktionen"
+        >
+          <span className="text-sm font-medium text-gray-700">
+            {selectedIds.size} Schicht{selectedIds.size !== 1 ? 'en' : ''} ausgewählt
+          </span>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={toggleSelectionMode}
+          >
+            Abbrechen
+          </button>
+          <button
+            type="button"
+            className="btn-danger-solid"
+            onClick={handleBulkDelete}
+          >
+            🗑 Löschen
+          </button>
+        </div>
+      )}
 
       {drawerOpen && (
         <ShiftDrawer
